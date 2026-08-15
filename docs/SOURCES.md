@@ -36,3 +36,11 @@ Legacy model Dockerfile references verified for v0.5:
 - NYU metarepository prediction script: https://raw.githubusercontent.com/nyukat/mammography_metarepository/master/models/nyu_model/predict/predict.sh — defines the image-only smoke path used by the prototype (`USE_HEATMAPS=False`) and the same four-stage preprocessing/classification sequence.
 - PyTorch 2.7 release: https://pytorch.org/blog/pytorch-2-7/ — introduces NVIDIA Blackwell support and CUDA 12.8 wheels.
 - PyTorch previous versions: https://pytorch.org/get-started/previous-versions/ — records the `torch==2.7.1`, `torchvision==0.22.1`, CUDA 12.8 installation combination used by the compatibility image.
+
+## v0.12 GLAM Blackwell compatibility references
+
+- GLAM metarepository Dockerfile: https://raw.githubusercontent.com/nyukat/mammography_metarepository/master/models/nyu_glam/Dockerfile — pins GLAM source commit `17a0019860441e2ea8d7b7c7e0aaeada735e871f` and the historical Python 3.6 / PyTorch 1.1.0 stack.
+- GLAM metarepository prediction script: https://raw.githubusercontent.com/nyukat/mammography_metarepository/master/models/nyu_glam/predict/predict.sh — defines preprocessing and image-level classifier invocation used by the prototype.
+- GLAM pinned `src/scripts/run_model.py`: https://raw.githubusercontent.com/nyukat/GLAM/17a0019860441e2ea8d7b7c7e0aaeada735e871f/src/scripts/run_model.py — contains the strict PyTorch 1.1.0 assertion, cuDNN capability check, device selection and visualization path addressed by the runtime compatibility layer.
+- GLAM pinned `src/modeling/glam.py`: https://raw.githubusercontent.com/nyukat/GLAM/17a0019860441e2ea8d7b7c7e0aaeada735e871f/src/modeling/glam.py — model architecture/device-placement source used to scope compatibility edits without changing layers or weights.
+- GLAM pinned `src/modeling/common_functions.py`: https://raw.githubusercontent.com/nyukat/GLAM/17a0019860441e2ea8d7b7c7e0aaeada735e871f/src/modeling/common_functions.py — historical index and sampling semantics explicitly preserved in the Blackwell runtime patch.

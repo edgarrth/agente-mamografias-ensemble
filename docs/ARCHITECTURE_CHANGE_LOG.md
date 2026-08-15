@@ -126,3 +126,12 @@ v0.2 introduced `gmic-runtime`, `nyu-runtime` and `glam-runtime` as three persis
 - Se modernizan únicamente dependencias de ejecución a Python 3.10, PyTorch 2.7.1, TorchVision 0.22.1 y CUDA 12.8.
 - Los parches de compatibilidad se declaran por modelo en `compatibility_code_patches`, eliminando el texto hardcodeado específico de GMIC en la auditoría genérica del runner.
 - NYU continúa en CPU por defecto hasta completar `ensure_gpu`, `gpu_probe` y smoke test real en la workstation.
+
+## 2026-08-15 — v0.12: runtime Blackwell específico para GLAM
+
+- Se agrega `mammography-model-glam:blackwell-cu128` como imagen GPU independiente.
+- El perfil sigue perteneciendo a GLAM en `config/models.yaml`; `.env` solo selecciona `GLAM_DEVICE=cpu|gpu`.
+- Se conserva el commit GLAM `17a0019860441e2ea8d7b7c7e0aaeada735e871f`, los checkpoints y la arquitectura.
+- Se moderniza únicamente el runtime a Python 3.10, PyTorch 2.7.1, TorchVision 0.22.1 y CUDA 12.8.
+- Los parches declarados cubren API cuDNN, backend gráfico headless, colocación de tensores y preservación de semánticas históricas de índice/sampling.
+- GLAM permanece en CPU por defecto hasta completar `ensure_gpu`, `gpu_probe` y smoke test real en la workstation.

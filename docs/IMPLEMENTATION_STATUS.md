@@ -1,4 +1,4 @@
-# Implementation status — v0.11
+# Implementation status — v0.12
 
 ## Implemented
 
@@ -44,15 +44,16 @@ El perfil GPU no se obtiene de `.env`; se resuelve desde `config/models.yaml`. S
 4. Docker/NVIDIA Toolkit/CDI con RTX 5060 Ti: **PASS**;
 5. GMIC Blackwell `torch 2.7.1+cu128` GPU probe: **PASS**;
 6. GMIC Blackwell smoke inference GPU: **PASS**, con CSV y 16 artefactos XAI.
-7. DMV-CNN/NYU Blackwell profile definition: **IMPLEMENTED in v0.11; workstation validation pending**.
+7. DMV-CNN/NYU Blackwell `torch 2.7.1+cu128` GPU probe: **PASS**;
+8. DMV-CNN/NYU Blackwell smoke inference GPU: **PASS**, elapsed 14.7271 s, sampled max GPU memory 2226 MiB.
+9. GLAM Blackwell profile definition: **IMPLEMENTED in v0.12; workstation validation pending**.
 
 ## Pendiente para la tesis
 
-1. validar en workstation el perfil GPU Blackwell de DMV-CNN/NYU incorporado en v0.11 (`ensure_gpu` → `gpu_probe` → smoke test);
-2. construir y validar un perfil GPU específico para GLAM;
-3. validar mapping nativo completo de los datasets autorizados hacia `source_manifest.csv`;
-4. ejecutar muestras piloto y evaluación experimental/final;
-5. obtener mediciones definitivas de tiempo, RAM/VRAM y métricas sobre los datasets seleccionados.
+1. validar en workstation el perfil GPU Blackwell de GLAM incorporado en v0.12 (`ensure_gpu` → `gpu_probe` → smoke test);
+2. validar mapping nativo completo de los datasets autorizados hacia `source_manifest.csv`;
+3. ejecutar muestras piloto y evaluación experimental/final;
+4. obtener mediciones definitivas de tiempo, RAM/VRAM y métricas sobre los datasets seleccionados.
 
 El software falla explícitamente si estos pasos fallan. No contiene fallback de inferencia simulada.
 ## v0.4 Docker boundary fix

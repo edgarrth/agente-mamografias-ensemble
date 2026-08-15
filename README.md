@@ -717,3 +717,33 @@ docker compose up -d --force-recreate model-runner fastapi streamlit
 ```
 
 The runner refuses GPU inference if the selected model has no configured GPU compatibility profile or has not passed `gpu_probe`.
+
+## v0.12 — Runtime Blackwell específico para GLAM
+
+v0.12 completa la definición de perfiles GPU por modelo agregando `mammography-model-glam:blackwell-cu128`. El perfil técnico está en `config/models.yaml`; no existe un perfil GPU global en `.env`.
+
+Después de validar GMIC y DMV-CNN/NYU en GPU, GLAM se habilita de forma independiente:
+
+```bash
+docker compose exec fastapi python -m model_tools.ensure_gpu --models glam
+docker compose exec fastapi python -m model_tools.gpu_probe --models glam
+```
+
+Solo después de `GPU_READY`:
+
+```env
+GMIC_DEVICE=gpu
+NYU_DEVICE=gpu
+GLAM_DEVICE=gpu
+ALLOW_GPU=true
+GPU_NUMBER=0
+```
+
+Luego:
+
+```bash
+docker compose up -d --force-recreate model-runner fastapi
+docker compose exec fastapi python -m model_tools.smoke_test --models glam
+```
+
+El runtime Blackwell de GLAM conserva el commit/checkpoints/arquitectura upstream. Los cambios declarados son únicamente de compatibilidad de ejecución y preservación de semánticas históricas del framework. Ver `docs/MIGRATION_V0_12.md`.

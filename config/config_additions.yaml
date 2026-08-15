@@ -228,3 +228,11 @@ additions:
   value: compatibility_code_patches list under each model gpu_compatibility block
   reason: GMIC and NYU require different narrow compatibility edits. Audit metadata must come from the
     selected model profile instead of a hard-coded GMIC patch description in the generic Model Runner.
+- id: ADD-040
+  name: glam_blackwell_runtime_profile
+  value: mammography-model-glam:blackwell-cu128; Python 3.10; PyTorch 2.7.1; torchvision 0.22.1; CUDA 12.8 wheel
+  reason: The legacy GLAM image uses PyTorch 1.1.0 and a CUDA 9.x-era binary plus a strict runtime-version assertion. A separate Blackwell-compatible runtime is required for RTX 5060 Ti validation while preserving the pinned GLAM source commit, pretrained checkpoints, architecture and inference contract.
+- id: ADD-041
+  name: glam_runtime_semantics_compatibility
+  value: headless plotting, modern cuDNN capability API, device-local intermediate tensors, legacy integer index division, legacy grid_sample alignment
+  reason: PyTorch/Matplotlib runtime semantics changed since the pinned GLAM implementation. These narrow compatibility edits are required to execute the same inference graph on a modern Blackwell runtime without changing model layers, learned parameters, checkpoint selection, output contract or training state.

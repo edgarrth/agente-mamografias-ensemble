@@ -1,11 +1,11 @@
-# Verification — v0.11
+# Verification — v0.12
 
 Package verification update on 2026-08-15.
 
 ## Static/local checks performed for this package
 
 - Python `compileall`: **PASS**.
-- Unit tests: **PASS (30/30)**, including NYU Blackwell profile and model-owned compatibility-patch audit checks.
+- Unit tests: **PASS (33/33)**, including GMIC, NYU and GLAM model-owned Blackwell profile/static compatibility checks.
 - Docker Compose/configuration YAML parse: **PASS**.
 - Host shell scripts `bash -n`: **PASS**.
 - NYU Blackwell Dockerfile static validation (pinned commit, PyTorch/TorchVision/CUDA 12.8 profile, compatibility paths): **PASS**.
@@ -19,6 +19,8 @@ Package verification update on 2026-08-15.
 - Model Runner / Docker socket integration: **PASS**.
 - GMIC legacy image build + real CPU smoke test: **PASS**; CSV + XAI.
 - DMV-CNN/NYU legacy image build + real CPU smoke test: **PASS**.
+- DMV-CNN/NYU Blackwell image build + `gpu_probe`: **PASS**, PyTorch `2.7.1+cu128`, CUDA 12.8, allocation/kernel PASS.
+- DMV-CNN/NYU Blackwell real GPU smoke test: **PASS**; elapsed 14.7271 s, sampled average GPU util 7.4%, sampled max GPU memory 2226 MiB.
 - GLAM legacy image build + real CPU smoke test: **PASS**; CSV + XAI.
 - RTX 5060 Ti visible in Fedora Remix WSL and Docker: **PASS**.
 - NVIDIA Container Toolkit/CDI: **PASS** (`GPU_HOST_READY`).
@@ -42,3 +44,11 @@ See `docs/WORKSTATION_VALIDATION.md` for the supplied execution evidence.
 - DMV-CNN/NYU now has its own `blackwell-cu128` compatibility image definition.
 - Static tests verify the pinned NYU commit, CUDA 12.8/PyTorch 2.7.1 runtime and model-owned compatibility patch metadata.
 - Real `ensure_gpu`, `gpu_probe` and GPU smoke-test execution for NYU must be completed on the researcher workstation before this runtime is considered experimentally validated.
+
+
+## v0.12 added validation surface
+
+- GLAM now has its own `blackwell-cu128` compatibility image definition.
+- Static tests verify the pinned GLAM commit, CUDA 12.8/PyTorch 2.7.1 runtime and declared runtime-only compatibility patches.
+- Compatibility `sed` transformations were applied against the pinned upstream GLAM `run_model.py`, `glam.py` and `common_functions.py` sources and the patched Python files passed syntax compilation.
+- Real `ensure_gpu`, `gpu_probe` and GPU smoke-test execution for GLAM must be completed on the researcher workstation before this runtime is considered experimentally validated.
