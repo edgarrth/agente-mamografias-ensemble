@@ -52,3 +52,17 @@ Legacy model Dockerfile references verified for v0.5:
 - Lee, R. S., Gimenez, F., Hoogi, A., Miyake, K. K., Gorovoy, M., & Rubin, D. L. (2017). *A curated mammography data set for use in computer-aided detection and diagnosis research*. Scientific Data, 4, 170177. DOI: 10.1038/sdata.2017.177. The paper documents the DICOM full mammograms, CC/MLO views, pathology field and the four metadata CSV filenames.
 - TCIA/NBIA Data Retriever documentation: authorized download mechanism for TCIA radiology manifests.
 - NYU breast_cancer_classifier README: the selected exam-level classifier requires four standard views (L-CC, R-CC, L-MLO, R-MLO), which motivates the v0.13 four-view compatibility gate.
+
+## CBIS-DDSM supporting metadata used by v0.15
+
+Official TCIA collection/wikipedia-style archive page (supporting CSVs and NBIA manifests):
+
+- https://wiki.cancerimagingarchive.net/pages/viewpage.action?pageId=22516629
+- https://www.cancerimagingarchive.net/collection/cbis-ddsm/
+
+v0.15 pins the four official case-description CSV identities and SHA-256 values in `config/datasets.yaml`. The DICOM image collection remains an explicit NBIA Data Retriever acquisition and is never downloaded by the prototype.
+
+## v0.18 label-contract verification
+
+- NYU mammography metarepository documents `cancer_label` with breast-level `left_malignant` and `right_malignant` fields for the common data list.
+- GMIC standalone `run_model.py` additionally reads `left_benign`/`right_benign` only after the model forward, when filling label columns in the output DataFrame. v0.18 treats their absence as unavailable metadata rather than inventing labels.

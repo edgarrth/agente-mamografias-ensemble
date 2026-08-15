@@ -5,6 +5,8 @@ from pathlib import Path, PurePosixPath
 import hashlib
 import re
 from typing import Iterable
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
 import pandas as pd
 
@@ -20,6 +22,31 @@ OFFICIAL_METADATA_FILES = (
     "calc_case_description_train_set.csv",
     "calc_case_description_test_set.csv",
 )
+
+# Official TCIA supporting-data attachments. The DICOM image collection remains a
+# separate NBIA Data Retriever transfer; these small CSV files can be acquired
+# automatically and atomically without touching an existing DICOM tree.
+OFFICIAL_METADATA_DOWNLOADS = {
+    "mass_case_description_train_set.csv": {
+        "url": "https://wiki.cancerimagingarchive.net/download/attachments/22516629/mass_case_description_train_set.csv?api=v2",
+        "sha256": "a4bcc1c32bfd040212737e6e8c304819334abe717cfefff56431dc50ae6db723",
+    },
+    "mass_case_description_test_set.csv": {
+        "url": "https://wiki.cancerimagingarchive.net/download/attachments/22516629/mass_case_description_test_set.csv?api=v2",
+        "sha256": "60f0b4504ec024106bbdd1555030d220163ea9da0ea4688473a4c9c3e8ab0457",
+    },
+    "calc_case_description_train_set.csv": {
+        "url": "https://wiki.cancerimagingarchive.net/download/attachments/22516629/calc_case_description_train_set.csv?api=v2",
+        "sha256": "3c7b07e8202f66709f446b9695e96c5d17484a65fda6a24d0170a0c1b81d56e3",
+    },
+    "calc_case_description_test_set.csv": {
+        "url": "https://wiki.cancerimagingarchive.net/download/attachments/22516629/calc_case_description_test_set.csv?api=v2",
+        "sha256": "03a2f72efb6ed29f417e07f4598950e6a1e02e6b11250ff516ebe7924ace3689",
+    },
+}
+
+AUXILIARY_METADATA_FILENAME = "metadata.csv"
+AUXILIARY_METADATA_REQUIRED_COLUMNS = ("PatientID", "SeriesInstanceUID")
 
 # TCIA has historically exposed the same four classification tables with UI labels
 # such as “Mass-Training-Description”.  Accept those downloaded filenames too, while
@@ -159,10 +186,29 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
             wanted[canonical.lower()] = canonical
             for alias in OFFICIAL_METADATA_ALIASES.get(canonical, ()):
                 wanted[alias.lower()] = canonical
-        for p in raw.rglob("*.csv"):
-            key = wanted.get(p.name.lower())
-            if key:
-                result[key].append(p.resolve())
+
+        # Fast path: v0.16 writes supporting data to raw/metadata and also accepts
+        # files placed directly in raw. Avoid a deep WSL/NTFS tree walk when these
+        # deterministic locations already contain everything required.
+        for base in (raw / "metadata", raw):
+            if not base.exists():
+                continue
+            for filename, canonical in wanted.items():
+                candidate = base / filename
+                if candidate.is_file():
+                    result[canonical].append(candidate.resolve())
+        if all(result[name] for name in OFFICIAL_METADATA_FILES):
+            return result
+
+        # Compatibility fallback for older arbitrary layouts. This is used only when
+        # one or more required tables were not found in the fast locations.
+        seen = {str(x) for values in result.values() for x in values}
+        for candidate in raw.rglob("*.csv"):
+            key = wanted.get(candidate.name.lower())
+            resolved = candidate.resolve()
+            if key and str(resolved) not in seen:
+                result[key].append(resolved)
+                seen.add(str(resolved))
         return result
 
     def _metadata_files(self, strict: bool = False) -> dict[str, Path]:
@@ -189,13 +235,224 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
             )
         return selected
 
-    def _raw_has_dicom(self) -> bool:
+    def _metadata_download_specs(self) -> dict[str, dict[str, str]]:
+        configured = self.cfg.get("official_metadata_downloads") or {}
+        specs = {}
+        for name in OFFICIAL_METADATA_FILES:
+            base = dict(OFFICIAL_METADATA_DOWNLOADS[name])
+            override = configured.get(name, {}) if isinstance(configured, dict) else {}
+            if isinstance(override, dict):
+                base.update({k: str(v) for k, v in override.items() if v is not None})
+            specs[name] = base
+        return specs
+
+    def _validate_metadata_table(self, path: Path, canonical_name: str, verify_sha256: bool = False) -> dict:
+        result = {"file": canonical_name, "path": str(path), "valid": False, "sha256": "", "missing_columns": []}
+        try:
+            digest = _sha256(path)
+            header = _canonical_metadata_columns(pd.read_csv(path, nrows=0))
+            missing = [c for c in REQUIRED_METADATA_COLUMNS if c not in header.columns]
+            result.update({"sha256": digest, "missing_columns": missing})
+            expected = self._metadata_download_specs().get(canonical_name, {}).get("sha256", "")
+            hash_ok = (not verify_sha256) or (not expected) or digest.lower() == str(expected).lower()
+            result["expected_sha256"] = expected
+            result["sha256_valid"] = bool(hash_ok)
+            result["valid"] = not missing and bool(hash_ok)
+            if missing:
+                result["error"] = f"missing required columns: {missing}"
+            elif not hash_ok:
+                result["error"] = f"SHA-256 mismatch: expected {expected}, got {digest}"
+        except Exception as exc:
+            result["error"] = f"{type(exc).__name__}: {exc}"
+        return result
+
+    @staticmethod
+    def _download_url_to_file(url: str, destination: Path, timeout: int = 120) -> None:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temp = destination.with_suffix(destination.suffix + ".part")
+        if temp.exists():
+            temp.unlink()
+        request = Request(url, headers={"User-Agent": "mammography-ai-agent/0.15 research prototype"})
+        try:
+            with urlopen(request, timeout=timeout) as response, temp.open("wb") as out:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+            temp.replace(destination)
+        except Exception:
+            if temp.exists():
+                temp.unlink()
+            raise
+
+    def _ensure_official_metadata(self) -> dict:
+        """Acquire only the four small official CSV tables; never transfer DICOM bytes."""
+        p = self._cbis_paths()
+        metadata_dir = p["raw"] / "metadata"
+        metadata_dir.mkdir(parents=True, exist_ok=True)
+        specs = self._metadata_download_specs()
+        candidates = self._metadata_candidates()
+        downloaded, reused, failed = [], [], []
+        validations = {}
+
+        for name in OFFICIAL_METADATA_FILES:
+            existing = candidates.get(name, [])
+            if existing:
+                # _metadata_files already prevents silently selecting non-identical duplicates.
+                selected = sorted(existing, key=lambda x: (len(x.parts), str(x)))[0]
+                validation = self._validate_metadata_table(selected, name, verify_sha256=bool(specs[name].get("sha256")))
+                validations[name] = validation
+                if validation["valid"]:
+                    reused.append(name)
+                    continue
+                failed.append({"file": name, "path": str(selected), "error": validation.get("error", "invalid metadata")})
+                continue
+
+            dest = metadata_dir / name
+            try:
+                self._download_url_to_file(specs[name]["url"], dest)
+                validation = self._validate_metadata_table(dest, name, verify_sha256=bool(specs[name].get("sha256")))
+                validations[name] = validation
+                if not validation["valid"]:
+                    failed.append({"file": name, "path": str(dest), "error": validation.get("error", "invalid metadata")})
+                    continue
+                downloaded.append(name)
+            except (HTTPError, URLError, TimeoutError, OSError, ValueError) as exc:
+                failed.append({"file": name, "path": str(dest), "error": f"{type(exc).__name__}: {exc}"})
+            except Exception as exc:
+                failed.append({"file": name, "path": str(dest), "error": f"{type(exc).__name__}: {exc}"})
+
+        # Re-scan because newly downloaded files were not present in the initial candidates.
+        final_candidates = self._metadata_candidates()
+        complete = all(final_candidates.get(name) for name in OFFICIAL_METADATA_FILES) and not failed
+        audit(
+            "CBIS_DDSM_METADATA_DOWNLOAD",
+            dataset=self.key,
+            downloaded=downloaded,
+            reused=reused,
+            failed=failed,
+            complete=bool(complete),
+            dicom_download_performed=False,
+        )
+        return {
+            "metadata_complete": bool(complete),
+            "metadata_downloaded": downloaded,
+            "metadata_reused": reused,
+            "metadata_failed": failed,
+            "metadata_validation": validations,
+            "metadata_dir": str(metadata_dir),
+        }
+
+    def _auxiliary_metadata_candidates(self) -> list[Path]:
         raw = self._cbis_paths()["raw"]
         if not raw.exists():
+            return []
+        direct = []
+        for candidate in (raw / "metadata" / AUXILIARY_METADATA_FILENAME, raw / AUXILIARY_METADATA_FILENAME):
+            if candidate.is_file():
+                direct.append(candidate.resolve())
+        if direct:
+            return sorted(set(direct), key=str)
+        return sorted((x.resolve() for x in raw.rglob(AUXILIARY_METADATA_FILENAME) if x.is_file()), key=str)
+
+    def _load_auxiliary_metadata(self) -> tuple[pd.DataFrame, dict]:
+        candidates = self._auxiliary_metadata_candidates()
+        if not candidates:
+            return pd.DataFrame(), {"present": False, "used": False, "files": [], "rows": 0, "reason": "metadata.csv not present; optional"}
+        if len(candidates) > 1:
+            hashes = {_sha256(x) for x in candidates}
+            if len(hashes) != 1:
+                return pd.DataFrame(), {"present": True, "used": False, "files": [str(x) for x in candidates], "rows": 0, "reason": "multiple non-identical metadata.csv files"}
+        path = candidates[0]
+        try:
+            df = pd.read_csv(path)
+        except Exception as exc:
+            return pd.DataFrame(), {"present": True, "used": False, "files": [str(path)], "rows": 0, "reason": f"{type(exc).__name__}: {exc}"}
+        normalized = {re.sub(r"[^a-z0-9]", "", str(c).lower()): c for c in df.columns}
+        patient_col = normalized.get("patientid")
+        series_col = normalized.get("seriesinstanceuid")
+        study_col = normalized.get("studyinstanceuid")
+        if not patient_col or not series_col:
+            return pd.DataFrame(), {
+                "present": True, "used": False, "files": [str(path)], "rows": int(len(df)),
+                "reason": f"missing auxiliary columns {list(AUXILIARY_METADATA_REQUIRED_COLUMNS)}",
+            }
+        out = pd.DataFrame({
+            "auxiliary_patient_text": df[patient_col].fillna("").astype(str),
+            "series_uid": df[series_col].fillna("").astype(str),
+            "study_uid": df[study_col].fillna("").astype(str) if study_col else "",
+        })
+        out["patient_id"] = out.auxiliary_patient_text.map(normalize_patient_id)
+        upper = out.auxiliary_patient_text.str.upper()
+        out["laterality"] = upper.map(lambda x: "LEFT" if "_LEFT_" in x or x.endswith("_LEFT") else "RIGHT" if "_RIGHT_" in x or x.endswith("_RIGHT") else "")
+        out["view"] = upper.map(lambda x: "MLO" if re.search(r"(?:_|-)MLO(?:_|-|$)", x) else "CC" if re.search(r"(?:_|-)CC(?:_|-|$)", x) else "")
+        out = out[out.series_uid.str.strip().ne("")].copy()
+        return out, {
+            "present": True, "used": True, "files": [str(path)], "rows": int(len(out)),
+            "sha256": _sha256(path), "reason": "used as auxiliary SeriesInstanceUID identity map; never used as pathology ground truth",
+        }
+
+    def _enrich_dicom_index_with_auxiliary(self, dicom_index: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+        aux, info = self._load_auxiliary_metadata()
+        if dicom_index is None or dicom_index.empty or aux.empty:
+            return dicom_index, {**info, "matched_dicom_objects": 0, "filled_patient_id": 0, "filled_laterality": 0, "filled_view": 0}
+        # Only unique series identities are safe to use automatically.
+        counts = aux.groupby("series_uid").size()
+        unique_uids = set(counts[counts == 1].index.astype(str))
+        aux_unique = aux[aux.series_uid.astype(str).isin(unique_uids)].drop_duplicates("series_uid").set_index("series_uid")
+        df = dicom_index.copy()
+        matched = 0; filled_patient = 0; filled_lat = 0; filled_view = 0
+        aux_patient_text = []
+        aux_match = []
+        for idx, row in df.iterrows():
+            uid = str(row.get("series_uid", ""))
+            if not uid or uid not in aux_unique.index:
+                aux_patient_text.append(""); aux_match.append(False); continue
+            a = aux_unique.loc[uid]
+            matched += 1; aux_match.append(True); aux_patient_text.append(str(a.get("auxiliary_patient_text", "")))
+            current_patient = str(row.get("patient_id", "") or "").strip()
+            current_lat = str(row.get("laterality", "") or "").strip()
+            current_view = str(row.get("view", "") or "").strip()
+            if (not current_patient or not re.fullmatch(r"P_\d{5}", normalize_patient_id(current_patient))) and str(a.get("patient_id", "")):
+                df.at[idx, "patient_id"] = str(a["patient_id"]); filled_patient += 1
+            elif current_patient:
+                df.at[idx, "patient_id"] = normalize_patient_id(current_patient)
+            if not current_lat and str(a.get("laterality", "")):
+                df.at[idx, "laterality"] = str(a["laterality"]); filled_lat += 1
+            if not current_view and str(a.get("view", "")):
+                df.at[idx, "view"] = str(a["view"]); filled_view += 1
+            if not str(row.get("study_uid", "") or "").strip() and str(a.get("study_uid", "")):
+                df.at[idx, "study_uid"] = str(a["study_uid"])
+        df["auxiliary_metadata_matched"] = aux_match
+        df["auxiliary_patient_text"] = aux_patient_text
+        return df, {
+            **info,
+            "matched_dicom_objects": int(matched),
+            "filled_patient_id": int(filled_patient),
+            "filled_laterality": int(filled_lat),
+            "filled_view": int(filled_view),
+            "unique_series_uids": int(len(unique_uids)),
+        }
+
+    def _raw_has_dicom(self) -> bool:
+        p = self._cbis_paths()
+        raw = p["raw"]
+        if not raw.exists():
             return False
-        for p in raw.rglob("*"):
-            if p.is_file() and (p.suffix.lower() in {".dcm", ".dicom"} or not p.suffix):
-                if p.name not in {"DOWNLOAD_INSTRUCTIONS.md"}:
+        # A successful prior inspection is sufficient for the normal idempotent path.
+        # It avoids recursively walking the large raw tree simply to answer status.
+        cache = p["dicom_index"]
+        if bool(self.cfg.get("reuse_dicom_index_cache", True)) and cache.exists():
+            try:
+                cached = pd.read_csv(cache, usecols=["is_dicom"] )
+                if not cached.empty and cached.is_dicom.fillna(False).astype(bool).any():
+                    return True
+            except Exception:
+                pass
+        for candidate in raw.rglob("*"):
+            if candidate.is_file() and (candidate.suffix.lower() in {".dcm", ".dicom"} or not candidate.suffix):
+                if candidate.name not in {"DOWNLOAD_INSTRUCTIONS.md"}:
                     return True
         return False
 
@@ -208,8 +465,8 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
         p["raw"].mkdir(parents=True, exist_ok=True)
         instructions.write_text(
             "# CBIS-DDSM classification metadata required\n\n"
-            "NBIA Data Retriever transfers the DICOM image collection; the four classification CSV tables are separate supporting data on the TCIA CBIS-DDSM collection page.\n\n"
-            "Download these four tables and place them anywhere under this directory (recommended: `metadata/`):\n\n"
+            "NBIA Data Retriever transfers the DICOM image collection; the four classification CSV tables are separate TCIA supporting data.\n\n"
+            "In v0.16, run `python -m dataset_pipeline.download --datasets cbis_ddsm` to acquire/verify these four small CSVs automatically. Existing valid copies are reused. If automatic metadata download is unavailable, place them under this directory (recommended: `metadata/`):\n\n"
             + "\n".join(f"- `{name}`" for name in OFFICIAL_METADATA_FILES)
             + "\n\nAccepted alternate downloaded names are also recognized: `Mass-Training-Description.csv`, `Mass-Test-Description.csv`, `Calc-Training-Description.csv`, and `Calc-Test-Description.csv`.\n"
             "Do not edit pathology values or image paths. The adapter uses the official `pathology` field as ground truth and records SHA-256 hashes during inspection.\n\n"
@@ -232,17 +489,18 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
         if p["canonical"].exists():
             state = "AVAILABLE"
         elif p["source"].exists():
-            state = "DOWNLOADED_NOT_PREPARED"
+            state = "INSPECTED_NOT_PREPARED"
         elif metadata_complete and dicom_present:
-            state = "DOWNLOADED_NOT_PREPARED"
+            state = "READY_FOR_INSPECT"
         elif dicom_present and not metadata_complete:
             state = "METADATA_REQUIRED"
-        elif p["raw"].exists() and any(p["raw"].iterdir()):
-            state = "MANUAL_DOWNLOAD_REQUIRED"
+        elif metadata_complete and not dicom_present:
+            state = "DICOM_DOWNLOAD_REQUIRED"
         else:
             state = "NOT_DOWNLOADED"
         candidates = self._metadata_candidates()
         missing = [name for name in OFFICIAL_METADATA_FILES if not candidates.get(name)]
+        aux_candidates = self._auxiliary_metadata_candidates()
         return {
             "dataset": self.key,
             "name": self.cfg["name"],
@@ -253,32 +511,78 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
             "official_metadata_missing": missing,
             "official_metadata_expected": list(OFFICIAL_METADATA_FILES),
             "dicom_present": dicom_present,
-            "adapter": "official_tcia_cbis_ddsm",
+            "dicom_auto_download": False,
+            "metadata_auto_download": True,
+            "auxiliary_metadata_csv": [str(x) for x in aux_candidates],
+            "adapter": "official_tcia_cbis_ddsm_v016",
             "requires_four_views_for_ensemble": True,
         }
 
     def download(self) -> dict:
+        """Prepare CBIS-DDSM acquisition without ever re-downloading the DICOM collection.
+
+        v0.16 automatically acquires/verifies only the four small official classification
+        CSVs. DICOM transfer remains an explicit TCIA/NBIA user action. Existing DICOM files
+        are detected and reused byte-for-byte.
+        """
         p = self._cbis_paths()
         p["raw"].mkdir(parents=True, exist_ok=True)
         if p["canonical"].exists():
             audit("DATASET_REUSED", dataset=self.key, status="AVAILABLE")
-            return {**self.status(), "action": "reused"}
+            return {**self.status(), "action": "reused", "dicom_download_performed": False}
+
         instructions = p["raw"] / "DOWNLOAD_INSTRUCTIONS.md"
         instructions.write_text(
-            "# CBIS-DDSM — official TCIA ingestion\n\n"
-            "Download the official CBIS-DDSM image collection with TCIA/NBIA Data Retriever.\n"
-            "Place the complete downloaded directory tree anywhere under this directory; do not flatten or rename DICOM files.\n\n"
-            "NBIA transfers the DICOM collection; classification CSV tables are separate TCIA supporting data.\n"
-            "Also place the four official classification CSV files anywhere under this directory (recommended: `metadata/`):\n\n"
+            "# CBIS-DDSM — v0.16 acquisition policy\n\n"
+            "## DICOM image collection\n\n"
+            "The prototype NEVER downloads or re-downloads the ~163 GB DICOM collection automatically. "
+            "Use the official TCIA/NBIA Data Retriever and place the complete downloaded directory tree anywhere under this directory. "
+            "Existing DICOM files are always reused; do not flatten or rename them.\n\n"
+            "## Classification metadata\n\n"
+            "The four small official TCIA classification CSV files are downloaded and SHA-256/column validated automatically by `dataset_pipeline.download`. "
+            "Valid existing copies are reused and are not downloaded again. They are stored under `metadata/` when acquisition is necessary.\n\n"
             + "\n".join(f"- `{name}`" for name in OFFICIAL_METADATA_FILES)
-            + "\n\nThe v0.14 adapter discovers the files recursively and generates `source_manifest.csv` automatically.\n"
-            "It uses only the official `pathology` field for benign/malignant ground truth and never infers labels from BI-RADS.\n"
-            "The three-model ensemble requires L-CC, R-CC, L-MLO and R-MLO. Incomplete exams are recorded under `datasets/rejected`; missing views are never duplicated or synthesized.\n\n"
+            + "\n\n`metadata.csv`, when present, is optional auxiliary TCIA series metadata. v0.16 may use PatientID/StudyInstanceUID/SeriesInstanceUID to enrich view resolution, but it is NEVER used as pathology ground truth.\n\n"
+            "The adapter generates `source_manifest.csv` only after inspection. Ground truth comes only from the official `pathology` field. Missing standard views are never duplicated or synthesized.\n\n"
             f"Official information: {self.cfg['official_information']}\n",
             encoding="utf-8",
         )
-        audit("DATASET_DOWNLOAD_MANUAL_ACTION_REQUIRED", dataset=self.key, instructions=str(instructions))
-        return {**self.status(), "status": "MANUAL_DOWNLOAD_REQUIRED", "instructions": str(instructions)}
+
+        dicom_present_before = self._raw_has_dicom()
+        metadata_result = self._ensure_official_metadata()
+        current = self.status()
+        if metadata_result["metadata_failed"]:
+            state = "METADATA_DOWNLOAD_FAILED"
+        elif not self._raw_has_dicom():
+            state = "DICOM_DOWNLOAD_REQUIRED"
+        else:
+            state = "READY_FOR_INSPECT"
+        result = {
+            **current,
+            **metadata_result,
+            "status": state,
+            "instructions": str(instructions),
+            "dicom_download_performed": False,
+            "dicom_reused": bool(dicom_present_before),
+            "dicom_action": "reused_existing_tree" if dicom_present_before else "manual_tcia_nbia_required",
+            "next_action": (
+                "Run dataset_pipeline.inspect; DICOM and metadata are present."
+                if state == "READY_FOR_INSPECT"
+                else "Complete the official TCIA/NBIA DICOM transfer under raw_dir, then rerun status/inspect."
+                if state == "DICOM_DOWNLOAD_REQUIRED"
+                else "Review metadata_failed; existing DICOM files were not touched."
+            ),
+        }
+        audit(
+            "DATASET_DOWNLOAD_PREPARED",
+            dataset=self.key,
+            status=state,
+            dicom_present=self._raw_has_dicom(),
+            dicom_download_performed=False,
+            metadata_downloaded=metadata_result["metadata_downloaded"],
+            metadata_reused=metadata_result["metadata_reused"],
+        )
+        return result
 
     def _load_official_metadata(self) -> pd.DataFrame:
         files = self._metadata_files(strict=True)
@@ -361,6 +665,38 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
                 return str(value).strip()
         return ""
 
+    def _load_cached_dicom_index(self, enrich_auxiliary: bool = True) -> pd.DataFrame | None:
+        """Load a completed DICOM header cache without rescanning the large raw tree.
+
+        v0.16 defaults to cache reuse after a successful inspect. If the DICOM tree has
+        changed, the researcher must request `--force-dicom-index`; this makes the cost
+        explicit instead of silently walking ~10k files on every inspect under WSL/NTFS.
+        """
+        if not bool(self.cfg.get("reuse_dicom_index_cache", True)):
+            return None
+        cache = self._cbis_paths()["dicom_index"]
+        if not cache.exists():
+            return None
+        try:
+            cached = pd.read_csv(cache)
+        except Exception:
+            return None
+        required = {"path", "is_dicom", "patient_id", "study_uid", "series_uid", "laterality", "view", "pixels"}
+        if not required.issubset(cached.columns) or cached.empty:
+            return None
+        if enrich_auxiliary:
+            cached, aux_info = self._enrich_dicom_index_with_auxiliary(cached)
+            if aux_info.get("used"):
+                cached.to_csv(cache, index=False)
+                audit(
+                    "CBIS_DDSM_DICOM_INDEX_CACHE_REUSED", dataset=self.key,
+                    rows=int(len(cached)), auxiliary_metadata_used=True,
+                    auxiliary_matched_dicom_objects=int(aux_info.get("matched_dicom_objects", 0)),
+                )
+            else:
+                audit("CBIS_DDSM_DICOM_INDEX_CACHE_REUSED", dataset=self.key, rows=int(len(cached)), auxiliary_metadata_used=False)
+        return cached
+
     def _build_dicom_index(self, files: Iterable[Path], force: bool = False) -> pd.DataFrame:
         p = self._cbis_paths()
         cache = p["dicom_index"]
@@ -385,7 +721,13 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
                         for _, r in cached.iterrows()
                     }
                     if cached_state == current_state:
-                        return cached
+                        enriched, aux_info = self._enrich_dicom_index_with_auxiliary(cached)
+                        # Enrichment is metadata-only and intentionally reuses the v0.14 DICOM
+                        # header cache; no DICOM file is opened again when file state is unchanged.
+                        if aux_info.get("used"):
+                            enriched.to_csv(cache, index=False)
+                            audit("CBIS_DDSM_DICOM_INDEX_AUXILIARY_ENRICHED", dataset=self.key, cache_reused=True, **{k:v for k,v in aux_info.items() if k != "files"})
+                        return enriched
             except Exception:
                 pass
         import pydicom
@@ -439,8 +781,14 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
             if file_index % 500 == 0:
                 audit("CBIS_DDSM_DICOM_INDEX_PROGRESS", dataset=self.key, processed=file_index, total=len(files))
         df = pd.DataFrame(rows)
+        df, aux_info = self._enrich_dicom_index_with_auxiliary(df)
         df.to_csv(cache, index=False)
-        audit("CBIS_DDSM_DICOM_INDEX_BUILT", dataset=self.key, files=len(files), dicom=int(df.is_dicom.sum()), cache=str(cache))
+        audit(
+            "CBIS_DDSM_DICOM_INDEX_BUILT", dataset=self.key, files=len(files),
+            dicom=int(df.is_dicom.sum()), cache=str(cache),
+            auxiliary_metadata_used=bool(aux_info.get("used")),
+            auxiliary_matched_dicom_objects=int(aux_info.get("matched_dicom_objects", 0)),
+        )
         return df
 
     def _resolve_with_dicom_index(
@@ -489,7 +837,10 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
         return ResolvedImage(None, "ambiguous_dicom_patient_view", len(top))
 
     def _resolve_metadata_images(self, metadata: pd.DataFrame, force_dicom_index: bool = False):
-        files = self._all_candidate_files()
+        cached_index = None if force_dicom_index else self._load_cached_dicom_index(enrich_auxiliary=True)
+        # When a prior successful inspection exists, use its recorded paths as the
+        # suffix/UID index. This performs no raw-tree traversal and opens no DICOM file.
+        files = [Path(x) for x in cached_index.path.astype(str)] if cached_index is not None else self._all_candidate_files()
         suffix_index = self._build_suffix_index(files)
         records = []
         unresolved_rows = []
@@ -519,9 +870,10 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
             if not resolved.path:
                 pending.append(len(records) - 1)
 
-        dicom_index = None
+        dicom_index = cached_index
         if pending:
-            dicom_index = self._build_dicom_index(files, force=force_dicom_index)
+            if dicom_index is None:
+                dicom_index = self._build_dicom_index(files, force=force_dicom_index)
             for idx in pending:
                 rec = records[idx]
                 resolved = self._resolve_with_dicom_index(
@@ -678,6 +1030,61 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
                 complete[c] = pd.Series(dtype="object")
         complete[source_cols].to_csv(p["source"], index=False)
 
+    def _dicom_object_inventory(self, metadata: pd.DataFrame, dicom_index: pd.DataFrame) -> dict:
+        """Classify downloaded DICOM objects by the official path tables, without pixel decoding."""
+        files = [Path(x) for x in dicom_index.path.astype(str)] if dicom_index is not None and not dicom_index.empty else []
+        suffix_index = self._build_suffix_index(files)
+        categories = {
+            "full_mammogram_images": ("image file path", set()),
+            "cropped_images": ("cropped image file path", set()),
+            "roi_masks": ("ROI mask file path", set()),
+        }
+        unresolved = {}
+        for label, (column, paths) in categories.items():
+            missing = 0
+            if column not in metadata.columns:
+                unresolved[label] = 0
+                continue
+            values = sorted(set(str(x).strip() for x in metadata[column].dropna() if str(x).strip()))
+            for value in values:
+                resolved = self._resolve_by_suffix(value, suffix_index)
+                if resolved.path:
+                    paths.add(str(resolved.path))
+                else:
+                    # Deterministic UID fallback when hierarchy/suffix changed.
+                    uid = self._series_uid_from_metadata_path(value)
+                    subset = dicom_index[dicom_index.series_uid.astype(str) == uid] if uid else pd.DataFrame()
+                    if len(subset) == 1:
+                        paths.add(str(subset.iloc[0].path))
+                    else:
+                        missing += 1
+            unresolved[label] = missing
+        valid_dicom_paths = set(
+            dicom_index.loc[dicom_index.is_dicom == True, "path"].astype(str)  # noqa: E712
+        ) if not dicom_index.empty else set()
+        full = categories["full_mammogram_images"][1] & valid_dicom_paths
+        cropped = categories["cropped_images"][1] & valid_dicom_paths
+        roi = categories["roi_masks"][1] & valid_dicom_paths
+        referenced = full | cropped | roi
+        return {
+            "dicom_objects": int(len(valid_dicom_paths)),
+            "full_mammogram_images": int(len(full)),
+            "cropped_images": int(len(cropped)),
+            "roi_masks": int(len(roi)),
+            "other_dicom_images": int(len(valid_dicom_paths - referenced)),
+            "object_inventory_unresolved_paths": unresolved,
+        }
+
+    @staticmethod
+    def _selected_full_view_count(complete: pd.DataFrame) -> int:
+        if complete is None or complete.empty:
+            return 0
+        paths = set()
+        for col in ("l_cc", "r_cc", "l_mlo", "r_mlo"):
+            if col in complete.columns:
+                paths.update(str(x) for x in complete[col].dropna() if str(x).strip())
+        return len(paths)
+
     def inspect(self, force_dicom_index: bool = False) -> dict:
         p = self._cbis_paths()
         guidance = self._metadata_guidance()
@@ -692,6 +1099,17 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
                 "dicom_index_started": False,
             }
             audit("CBIS_DDSM_METADATA_REQUIRED", dataset=self.key, missing=guidance["official_metadata_missing"], instructions=guidance["metadata_instructions"] )
+            return result
+        if not self._raw_has_dicom():
+            result = {
+                "dataset": self.key,
+                "status": "DICOM_DOWNLOAD_REQUIRED",
+                "raw_dir": str(p["raw"]),
+                **guidance,
+                "next_action": "Download the official CBIS-DDSM DICOM collection with TCIA/NBIA Data Retriever under raw_dir. v0.16 will reuse it and never auto-download DICOM bytes.",
+                "dicom_index_started": False,
+            }
+            audit("CBIS_DDSM_DICOM_REQUIRED", dataset=self.key, raw_dir=str(p["raw"]))
             return result
         metadata_files = self._metadata_files(strict=True)
         metadata_hashes = {name: _sha256(path) for name, path in metadata_files.items()}
@@ -709,6 +1127,14 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
             metadata.assign(pathology_normalized=metadata.pathology.astype(str).str.upper())
             .pathology_normalized.value_counts(dropna=False).to_dict()
         )
+        inventory = self._dicom_object_inventory(metadata, dicom_index)
+        aux_df, aux_info = self._load_auxiliary_metadata()
+        if dicom_index is not None and "auxiliary_metadata_matched" in dicom_index.columns:
+            aux_info = {**aux_info, "matched_dicom_objects": int(dicom_index.auxiliary_metadata_matched.fillna(False).astype(bool).sum())}
+        complete_gt_counts = (
+            pd.to_numeric(complete.ground_truth, errors="coerce").dropna().astype(int).value_counts().to_dict()
+            if not complete.empty and "ground_truth" in complete.columns else {}
+        )
         result = {
             "dataset": self.key,
             "status": "INSPECTED",
@@ -718,10 +1144,17 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
             "unresolved_metadata_rows": int(len(unresolved)),
             "dicom_files_indexed": int(len(dicom_index)) if dicom_index is not None else 0,
             "dicom_headers_valid": int(dicom_index.is_dicom.sum()) if dicom_index is not None and "is_dicom" in dicom_index else 0,
+            **inventory,
+            "auxiliary_metadata": aux_info,
             "supplemental_standard_views": supplemental_rows,
             "patients": int(catalog.patient_id.nunique()) if not catalog.empty else 0,
             "complete_four_view_studies": int(len(complete)),
             "incomplete_studies": int(len(catalog) - len(complete)),
+            "selected_full_view_images": self._selected_full_view_count(complete),
+            "complete_study_ground_truth_counts": {
+                "BENIGN": int(complete_gt_counts.get(0, 0)),
+                "MALIGNANT": int(complete_gt_counts.get(1, 0)),
+            },
             "pathology_counts": pathology_counts,
             "official_metadata_sha256": metadata_hashes,
             "metadata_catalog": str(p["metadata_catalog"]),
@@ -731,7 +1164,7 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
             "unresolved_manifest": str(p["unresolved"]),
             "dicom_index": str(p["dicom_index"]),
             "ensemble_compatible": bool(len(complete)),
-            "note": "Current NYU/DMV-CNN exam-level path requires all four standard views; missing views are never synthesized.",
+            "note": "Current NYU/DMV-CNN exam-level path requires all four standard views. v0.16 may recover standard views from optional TCIA metadata.csv SeriesInstanceUID identity, but missing views are never synthesized and pathology still comes only from the four official case-description CSVs.",
         }
         audit("CBIS_DDSM_INSPECTED", **{k: v for k, v in result.items() if k not in {"pathology_counts", "note"}})
         return result
@@ -741,6 +1174,8 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
             result = self.inspect(force_dicom_index=False)
         except Exception as exc:
             return {"dataset": self.key, "valid": False, "reason": f"{type(exc).__name__}: {exc}"}
+        if result.get("status") != "INSPECTED":
+            return {"dataset": self.key, "valid": False, "reason": result.get("status", "inspection incomplete")}
         return {
             "dataset": self.key,
             "valid": result["unresolved_metadata_rows"] == 0 and result["complete_four_view_studies"] > 0,
@@ -753,8 +1188,8 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
     def prepare(self) -> dict:
         p = self._cbis_paths()
         inspection = self.inspect(force_dicom_index=False)
-        if inspection.get("status") == "METADATA_REQUIRED":
-            return {**inspection, "status": "METADATA_REQUIRED", "converted_studies": 0}
+        if inspection.get("status") in {"METADATA_REQUIRED", "DICOM_DOWNLOAD_REQUIRED"}:
+            return {**inspection, "converted_studies": 0}
         src = pd.read_csv(p["source"])
         if src.empty:
             if p["canonical"].exists():

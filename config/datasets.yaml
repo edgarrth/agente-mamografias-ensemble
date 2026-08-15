@@ -5,14 +5,16 @@ datasets:
     official_information: https://www.cancerimagingarchive.net/collection/cbis-ddsm/
     download_policy: explicit
     automatic_download: false
-    reason: TCIA/NBIA performs the authorized image transfer. v0.14 recursively ingests
-      the official DICOM tree and four TCIA classification CSVs; it never bypasses
-      access controls.
+    reason: TCIA/NBIA remains the explicit authorized transfer mechanism for the large
+      DICOM collection. v0.16 never downloads or re-downloads DICOM bytes; it only
+      auto-acquires and verifies the four small official classification CSVs, reuses
+      an existing DICOM tree/cache, and optionally enriches SeriesInstanceUID identity
+      from metadata.csv.
     raw_dir: /workspace/datasets/raw/cbis_ddsm
     processed_dir: /workspace/datasets/processed/cbis_ddsm
     source_manifest: /workspace/datasets/raw/cbis_ddsm/source_manifest.csv
     canonical_manifest: /workspace/datasets/manifests/cbis_ddsm.csv
-    adapter: official_tcia_cbis_ddsm
+    adapter: official_tcia_cbis_ddsm_v016
     official_metadata_files:
     - mass_case_description_train_set.csv
     - mass_case_description_test_set.csv
@@ -26,6 +28,22 @@ datasets:
     minimum_full_image_pixels: 1000000
     require_four_views_for_ensemble: true
     ground_truth_source: official pathology column only
+    automatic_metadata_download: true
+    official_metadata_downloads:
+      mass_case_description_train_set.csv:
+        url: https://wiki.cancerimagingarchive.net/download/attachments/22516629/mass_case_description_train_set.csv?api=v2
+        sha256: a4bcc1c32bfd040212737e6e8c304819334abe717cfefff56431dc50ae6db723
+      mass_case_description_test_set.csv:
+        url: https://wiki.cancerimagingarchive.net/download/attachments/22516629/mass_case_description_test_set.csv?api=v2
+        sha256: 60f0b4504ec024106bbdd1555030d220163ea9da0ea4688473a4c9c3e8ab0457
+      calc_case_description_train_set.csv:
+        url: https://wiki.cancerimagingarchive.net/download/attachments/22516629/calc_case_description_train_set.csv?api=v2
+        sha256: 3c7b07e8202f66709f446b9695e96c5d17484a65fda6a24d0170a0c1b81d56e3
+      calc_case_description_test_set.csv:
+        url: https://wiki.cancerimagingarchive.net/download/attachments/22516629/calc_case_description_test_set.csv?api=v2
+        sha256: 03a2f72efb6ed29f417e07f4598950e6a1e02e6b11250ff516ebe7924ace3689
+    auxiliary_series_metadata_filename: metadata.csv
+    reuse_dicom_index_cache: true
   vindr:
     name: VinDr-Mammo
     enabled: true

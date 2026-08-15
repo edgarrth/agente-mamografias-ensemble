@@ -49,8 +49,12 @@ def ensure_model(model: str):
 
 
 
-def ensure_gpu_model(model: str):
-    r = requests.post(f"{_model_path(model)}/ensure-gpu", timeout=7200)
+def ensure_gpu_model(model: str, force_rebuild: bool = False):
+    r = requests.post(
+        f"{_model_path(model)}/ensure-gpu",
+        params={"force_rebuild": str(bool(force_rebuild)).lower()},
+        timeout=7200,
+    )
     _raise_runner_error(r, "ensure-gpu", model)
     return r.json()
 

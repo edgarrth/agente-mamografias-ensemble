@@ -107,3 +107,53 @@ GPU_NUMBER=0
 ```
 
 Los tres modelos conservan perfiles Blackwell independientes en `config/models.yaml`; esta configuración de despliegue no cambia arquitectura, pesos ni checkpoints.
+
+## CBIS-DDSM — primera inspección real completa antes de v0.15
+
+Ejecución real del `dataset_pipeline.inspect` sobre la copia local completa:
+
+```text
+inicio = 2026-08-15 15:11:31.616
+fin    = 2026-08-15 15:23:04.535
+elapsed ~= 11 min 32.9 s
+```
+
+Resultado observado:
+
+```text
+metadata_rows = 3568
+resolved_metadata_rows = 3568
+unresolved_metadata_rows = 0
+dicom_files_indexed = 10239
+dicom_headers_valid = 10239
+patients = 1566
+complete_four_view_studies = 105
+incomplete_studies = 1461
+supplemental_standard_views = 0
+ensemble_compatible = true
+```
+
+Este tiempo queda como baseline medido para una reconstrucción/inspección que recorrió la colección completa bajo `/mnt/d` en WSL/NTFS. v0.15 introduce reutilización explícita del índice DICOM y enriquecimiento mediante `metadata.csv` sin reabrir DICOM cuando el cache ya existe. El tiempo real de esa ruta optimizada todavía debe medirse en la workstation.
+
+## CBIS-DDSM — validación real v0.15 y primer normal test
+
+Evidencia de la workstation objetivo del 2026-08-15:
+
+- `dataset_pipeline.download`: DICOM reutilizados, cuatro CSV oficiales reutilizados y SHA-256 válidos; ~0.9 s.
+- `dataset_pipeline.inspect` con cache: 10,239 DICOM, 1,566 pacientes, 105 estudios de cuatro vistas, 420 imágenes seleccionadas, 72 benignos/33 malignos; ~19.5 s.
+- `dataset_pipeline.prepare`: 105/105 estudios convertidos; ~8 min 20 s.
+- `tests_flow.normal --samples 5`: inició GMIC y falló ~27 s después del inicio total con `AssertionError: top_k_prop_y <= 0.0` durante `GMIC._convert_crop_position`.
+
+v0.16 identifica como causa de compatibilidad el cálculo de índice 2D en el commit GMIC fijado, donde `max_idx_x = max_linear_idx / W_map` fue escrito para semántica PyTorch 1.1. El parche sustituye únicamente esa división por `torch.div(..., rounding_mode="floor")`; la validación end-to-end de este cambio queda pendiente de la siguiente ejecución en workstation.
+
+## 2026-08-15 — GMIC Blackwell build_revision=2 (v0.16)
+
+Validación real reportada por la workstation objetivo después del fix de semántica de índices:
+
+- `/app/VERSION`: `0.16.0`.
+- `ensure_gpu gmic`: `READY`, `build_revision=2`, mismo commit GMIC `3bf4ce81dfa40553f108c8bfaf03bf006e082761`, arquitectura/pesos/entrenamiento sin cambios.
+- `gpu_probe gmic`: `GPU_READY`, PyTorch `2.7.1+cu128`, CUDA `12.8`, RTX 5060 Ti, `allocation_ok=true`, `kernel_ok=true`.
+- smoke test GMIC: `READY`, ~89.999 s, 29 muestras de métrica, 16 artefactos XAI, ~2740 MiB VRAM máxima observada.
+
+Esta validación demuestra que el fix de cociente/remainder no rompió el sample workflow upstream. La prueba CBIS-DDSM end-to-end debe repetirse para validar específicamente el caso que originó el error.
+

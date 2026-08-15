@@ -156,3 +156,39 @@ v0.2 introduced `gmic-runtime`, `nyu-runtime` and `glam-runtime` as three persis
 - `prepare` conserva la misma guarda y no intenta convertir imágenes sin metadata oficial.
 - Se aceptan aliases de nombres `Mass/Calc-Training/Test-Description.csv` sin alterar el contenido de las tablas ni la fuente de ground truth.
 - No se modifica ningún modelo, peso, checkpoint, arquitectura ni regla de ensemble.
+
+## 2026-08-15 — v0.15: descarga CBIS-DDSM no destructiva, cache reutilizable y metadata.csv auxiliar
+
+- `dataset_pipeline.download` nunca descarga ni re-descarga DICOM CBIS-DDSM; la adquisición de imágenes continúa en TCIA/NBIA.
+- Se automatiza únicamente la adquisición de los cuatro CSV oficiales de clasificación, con validación SHA-256 y columnas requeridas.
+- Copias válidas existentes se reutilizan; la operación es idempotente respecto del dataset DICOM.
+- `metadata.csv` pasa a ser una fuente auxiliar opcional de identidad SeriesInstanceUID/StudyInstanceUID/PatientID; no participa en ground truth.
+- El índice DICOM existente se reutiliza por defecto y puede enriquecerse sin abrir nuevamente los DICOM. `--force-dicom-index` hace explícita una reconstrucción completa.
+- `inspect` agrega inventario de objetos DICOM y conteos de estudios/vistas seleccionadas para evitar mezclar imágenes, anomalías, pacientes y unidades de evaluación.
+- `.env.example` conserva el perfil GPU realmente validado para los tres modelos.
+
+## 2026-08-15 — v0.16: compatibilidad de índices GMIC, health state logs y catálogo operativo
+
+- GMIC Blackwell preserva semántica PyTorch 1.1 de cociente/remainder en `get_max_window` mediante `torch.div(..., rounding_mode="floor")`.
+- `build_revision=2` reconstruye solo GMIC y obliga a renovar su `gpu_probe`; NYU/GLAM no cambian.
+- Access logs de `/health` pasan a ser por transición: primer estado, fallo y recuperación; se suprimen probes 200 repetidos.
+- `VERSION` se expone dentro de FastAPI y Model Runner y corrige el `0.10.0` stale de `/doctor`/`/health`.
+- README centraliza comandos Docker y documenta efectos destructivos/no destructivos, en particular `dataset_pipeline.prepare`.
+
+## 2026-08-15 — v0.17: validación GPU integrada y parametrizada
+
+- Se agrega `model_tools.validate_gpu` para uno, varios o todos los modelos.
+- La secuencia de validación es determinística: primero `ensure_gpu` de todos los seleccionados, después `gpu_probe`, finalmente smoke tests.
+- La operación continúa con los demás modelos si uno falla, salvo `--fail-fast`, y deja un reporte JSON en `workspace/output/model_validation/`.
+- `--force-rebuild` permite reconstruir explícitamente imágenes GPU aunque el `build_revision` ya coincida; por defecto no se reconstruyen imágenes sin cambios.
+- El smoke integrado exige `device=gpu` para evitar falsos positivos de validación sobre CPU.
+- No cambia arquitectura, pesos, checkpoints, datasets, fórmula de ensemble ni perfiles CUDA de GMIC/NYU/GLAM.
+
+
+## 2026-08-15 — v0.18: compatibilidad del contrato de etiquetas GMIC
+
+- La integración CBIS-DDSM confirmó que el fix de índices v0.16 permitió completar el `forward()` de GMIC.
+- Se detectó después del forward un `KeyError: left_benign` al generar metadata del CSV de salida.
+- El batch canónico conserva exclusivamente las etiquetas malignas breast-level exigidas por el metarepository; v0.18 no inventa etiquetas benignas.
+- El runner GMIC Blackwell emite `NaN` en `benign_label` cuando esa etiqueta opcional no está disponible, preservando los scores benign/malignant producidos por el modelo.
+- `GMIC build_revision=3`; NYU/GLAM permanecen en revisión 1.

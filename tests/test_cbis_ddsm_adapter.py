@@ -218,3 +218,159 @@ def test_cbis_accepts_tcia_description_filename_aliases(tmp_path, monkeypatch):
     files = adapter._metadata_files(strict=True)
     assert set(files) == set(OFFICIAL_METADATA_FILES)
     assert files["mass_case_description_train_set.csv"].name == "Mass-Training-Description.csv"
+
+
+def test_cbis_v015_download_reuses_existing_dicom_and_never_redownloads_it(tmp_path, monkeypatch):
+    _patch_workspace(monkeypatch, tmp_path)
+    cfg = _cfg(tmp_path)
+    raw = Path(cfg["raw_dir"])
+    _write_dicom(raw / "CBIS-DDSM" / "already_here.dcm", "P_00001", "LEFT", "CC", "1.2.3", "1.2.4")
+    _make_official_files(raw, [_metadata_row("P_00001", "LEFT", "CC", "MALIGNANT", "x")])
+    adapter = CBISDDSMDatasetAdapter("cbis_ddsm", cfg)
+
+    # Make the test fixtures authoritative for this test so no network call is necessary.
+    specs = {}
+    import hashlib
+    for name in OFFICIAL_METADATA_FILES:
+        path = raw / name
+        specs[name] = {"url": f"https://example.invalid/{name}", "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    monkeypatch.setattr(adapter, "_metadata_download_specs", lambda: specs)
+    monkeypatch.setattr(adapter, "_download_url_to_file", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("network should not be called")))
+
+    result = adapter.download()
+    assert result["status"] == "READY_FOR_INSPECT"
+    assert result["dicom_download_performed"] is False
+    assert result["dicom_reused"] is True
+    assert set(result["metadata_reused"]) == set(OFFICIAL_METADATA_FILES)
+    assert result["metadata_downloaded"] == []
+    assert (raw / "CBIS-DDSM" / "already_here.dcm").exists()
+
+
+def test_cbis_v015_download_acquires_only_missing_small_metadata(tmp_path, monkeypatch):
+    _patch_workspace(monkeypatch, tmp_path)
+    cfg = _cfg(tmp_path)
+    raw = Path(cfg["raw_dir"])
+    _write_dicom(raw / "CBIS-DDSM" / "already_here.dcm", "P_00001", "LEFT", "CC", "1.2.3", "1.2.4")
+    adapter = CBISDDSMDatasetAdapter("cbis_ddsm", cfg)
+
+    columns = list(_metadata_row("P_00000", "LEFT", "CC", "BENIGN", "x").keys())
+    payloads = {}
+    import hashlib, io
+    for name in OFFICIAL_METADATA_FILES:
+        frame = pd.DataFrame([_metadata_row("P_00001", "LEFT", "CC", "MALIGNANT", "x")], columns=columns) if name == OFFICIAL_METADATA_FILES[0] else pd.DataFrame(columns=columns)
+        payload = frame.to_csv(index=False).encode()
+        payloads[name] = payload
+    specs = {name: {"url": f"https://unit.test/{name}", "sha256": hashlib.sha256(payloads[name]).hexdigest()} for name in OFFICIAL_METADATA_FILES}
+    monkeypatch.setattr(adapter, "_metadata_download_specs", lambda: specs)
+
+    calls = []
+    def fake_download(url, destination, timeout=120):
+        name = Path(destination).name
+        calls.append(name)
+        Path(destination).parent.mkdir(parents=True, exist_ok=True)
+        Path(destination).write_bytes(payloads[name])
+    monkeypatch.setattr(adapter, "_download_url_to_file", fake_download)
+
+    result = adapter.download()
+    assert result["status"] == "READY_FOR_INSPECT"
+    assert result["dicom_download_performed"] is False
+    assert result["dicom_reused"] is True
+    assert set(calls) == set(OFFICIAL_METADATA_FILES)
+    assert set(result["metadata_downloaded"]) == set(OFFICIAL_METADATA_FILES)
+    for name in OFFICIAL_METADATA_FILES:
+        assert (raw / "metadata" / name).exists()
+
+
+def test_cbis_v015_auxiliary_metadata_enriches_cached_series_identity(tmp_path, monkeypatch):
+    _patch_workspace(monkeypatch, tmp_path)
+    cfg = _cfg(tmp_path)
+    raw = Path(cfg["raw_dir"])
+    metadata_dir = raw / "metadata"
+    metadata_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([
+        {
+            "PatientID": "Calc-Test_P_00038_RIGHT_MLO_1",
+            "StudyInstanceUID": "1.2.3",
+            "SeriesInstanceUID": "1.2.3.4",
+            "Collection": "cbis_ddsm",
+        }
+    ]).to_csv(metadata_dir / "metadata.csv", index=False)
+    adapter = CBISDDSMDatasetAdapter("cbis_ddsm", cfg)
+    index = pd.DataFrame([
+        {
+            "path": str(raw / "CBIS-DDSM" / "opaque.dcm"), "is_dicom": True,
+            "patient_id": "", "study_uid": "", "series_uid": "1.2.3.4", "sop_uid": "1.2.3.4.5",
+            "laterality": "", "view": "", "series_description": "", "rows": 4000,
+            "columns": 2000, "pixels": 8_000_000, "bits_stored": "12", "photometric": "MONOCHROME2", "read_error": "",
+        }
+    ])
+    enriched, info = adapter._enrich_dicom_index_with_auxiliary(index)
+    assert info["used"] is True
+    assert info["matched_dicom_objects"] == 1
+    assert enriched.iloc[0].patient_id == "P_00038"
+    assert enriched.iloc[0].laterality == "RIGHT"
+    assert enriched.iloc[0]["view"] == "MLO"
+    assert enriched.iloc[0].study_uid == "1.2.3"
+
+
+def test_cbis_v015_inventory_reports_distinct_object_types(tmp_path, monkeypatch):
+    _patch_workspace(monkeypatch, tmp_path)
+    cfg = _cfg(tmp_path)
+    raw = Path(cfg["raw_dir"])
+    adapter = CBISDDSMDatasetAdapter("cbis_ddsm", cfg)
+    full = raw / "case" / "study" / "full" / "1.dcm"
+    crop = raw / "case" / "study" / "crop" / "2.dcm"
+    roi = raw / "case" / "study" / "roi" / "3.dcm"
+    other = raw / "case" / "study" / "other" / "4.dcm"
+    for x in (full, crop, roi, other):
+        x.parent.mkdir(parents=True, exist_ok=True); x.write_bytes(b"x")
+    metadata = pd.DataFrame([{
+        "image file path": "case/study/full/1.dcm",
+        "cropped image file path": "case/study/crop/2.dcm",
+        "ROI mask file path": "case/study/roi/3.dcm",
+    }])
+    index = pd.DataFrame([
+        {"path": str(x.resolve()), "is_dicom": True, "series_uid": ""} for x in (full, crop, roi, other)
+    ])
+    inv = adapter._dicom_object_inventory(metadata, index)
+    assert inv["dicom_objects"] == 4
+    assert inv["full_mammogram_images"] == 1
+    assert inv["cropped_images"] == 1
+    assert inv["roi_masks"] == 1
+    assert inv["other_dicom_images"] == 1
+
+
+def test_cbis_v015_cached_dicom_index_avoids_raw_tree_rescan(tmp_path, monkeypatch):
+    _patch_workspace(monkeypatch, tmp_path)
+    cfg = _cfg(tmp_path)
+    cfg["reuse_dicom_index_cache"] = True
+    raw = Path(cfg["raw_dir"])
+    raw.mkdir(parents=True, exist_ok=True)
+    adapter = CBISDDSMDatasetAdapter("cbis_ddsm", cfg)
+    cached_path = raw / "CBIS-DDSM" / "opaque" / "1.dcm"
+    cached_path.parent.mkdir(parents=True, exist_ok=True)
+    cached_path.write_bytes(b"placeholder")
+    cache = Path(cfg["dicom_index_cache"])
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([{
+        "path": str(cached_path), "file_size": 11, "file_mtime_ns": 1,
+        "is_dicom": True, "patient_id": "P_00001", "study_uid": "1.2.3",
+        "series_uid": "1.2.3.4", "sop_uid": "1.2.3.4.5", "laterality": "LEFT",
+        "view": "CC", "series_description": "", "rows": 4000, "columns": 2000,
+        "pixels": 8_000_000, "bits_stored": "12", "photometric": "MONOCHROME2", "read_error": "",
+    }]).to_csv(cache, index=False)
+    monkeypatch.setattr(adapter, "_all_candidate_files", lambda: (_ for _ in ()).throw(AssertionError("raw tree must not be rescanned")))
+    metadata = pd.DataFrame([_metadata_row("P_00001", "LEFT", "CC", "MALIGNANT", "case/1.2.3/1.2.3.4/1.dcm")])
+    metadata = metadata.rename(columns={"left or right breast": "left or right breast", "image view": "image view"})
+    metadata["patient_id"] = metadata["patient_id"].map(lambda x: x)
+    metadata["laterality"] = "LEFT"
+    metadata["view"] = "CC"
+    metadata["ground_truth"] = 1
+    metadata["official_split"] = "train"
+    metadata["metadata_file"] = "fixture"
+    metadata["lesion_type"] = "mass"
+    metadata["metadata_row"] = 0
+    resolved, unresolved, index = adapter._resolve_metadata_images(metadata, force_dicom_index=False)
+    assert len(unresolved) == 0
+    assert index is not None
+    assert resolved.iloc[0].resolution_method in {"path_suffix_1", "dicom_uid"}

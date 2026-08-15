@@ -2,8 +2,8 @@ additions:
 - id: ADD-001
   name: MODEL_DEVICE
   value: cpu|gpu; default=cpu
-  reason: The upstream model images use legacy CUDA/PyTorch stacks. CPU is the safe first-run mode until
-    the target GPU passes a real smoke test.
+  reason: The upstream model images use legacy CUDA/PyTorch stacks. CPU is the safe
+    first-run mode until the target GPU passes a real smoke test.
   status: superseded
   superseded_by: ADD-036
 - id: ADD-002
@@ -15,28 +15,29 @@ additions:
 - id: ADD-003
   name: MODEL_BOOTSTRAP_MODE
   value: lazy|eager; default=lazy
-  reason: Building the three upstream model images can take time; a thesis prototype should start quickly
-    and build the required model image on first use.
+  reason: Building the three upstream model images can take time; a thesis prototype
+    should start quickly and build the required model image on first use.
 - id: ADD-004
   name: study_level_aggregation
   value: GMIC=max image; NYU=max breast; GLAM=max image
-  reason: The three official outputs have different native granularities but soft voting requires one
-    deterministic score per study.
+  reason: The three official outputs have different native granularities but soft
+    voting requires one deterministic score per study.
 - id: ADD-005
   name: explicit_dataset_download
   value: dataset selection is mandatory
-  reason: Datasets are large and may require license/credential steps. Docker startup must never unexpectedly
-    download hundreds of GB.
+  reason: Datasets are large and may require license/credential steps. Docker startup
+    must never unexpectedly download hundreds of GB.
 - id: ADD-006
   name: max_runtime_minutes
   value: optional; development only
-  reason: Pilot tests need a predictable time budget. The final thesis test set must never be truncated
-    by this option.
+  reason: Pilot tests need a predictable time budget. The final thesis test set must
+    never be truncated by this option.
 - id: ADD-007
   name: docker_socket_isolated_to_model_runner
   value: /var/run/docker.sock only in model-runner
-  reason: Only the lightweight model-runner needs Docker daemon access to build and start the isolated
-    upstream model images. FastAPI, Streamlit, bootstrap and model images do not receive the Docker socket.
+  reason: Only the lightweight model-runner needs Docker daemon access to build and
+    start the isolated upstream model images. FastAPI, Streamlit, bootstrap and model
+    images do not receive the Docker socket.
 - id: ADD-008
   name: no_automatic_prediction_fallback
   value: fail explicitly
@@ -44,227 +45,378 @@ additions:
 - id: ADD-009
   name: source_manifest_boundary
   value: source_manifest.csv required for raw datasets
-  reason: Native public datasets use different label schemas. Requiring an explicit mapping prevents the
-    prototype from inventing or incorrectly deriving cancer ground truth.
+  reason: Native public datasets use different label schemas. Requiring an explicit
+    mapping prevents the prototype from inventing or incorrectly deriving cancer ground
+    truth.
 - id: ADD-010
   name: xai_official_flag
   value: enable official visualization option for GMIC/GLAM when supported
-  reason: The architecture requires real XAI. The model-runner only requests visualization already implemented
-    by the upstream GMIC/GLAM image; it never synthesizes a heatmap.
+  reason: The architecture requires real XAI. The model-runner only requests visualization
+    already implemented by the upstream GMIC/GLAM image; it never synthesizes a heatmap.
 - id: ADD-011
   name: minio_image_tag
   value: minio/minio:latest during prototype development
-  reason: A verified immutable MinIO tag was not part of the research specification. Before definitive
-    measurements, the resolved image digest must be recorded/pinned.
+  reason: A verified immutable MinIO tag was not part of the research specification.
+    Before definitive measurements, the resolved image digest must be recorded/pinned.
 - id: ADD-012
   name: dicom_conversion_mode
-  value: preserve native ordering; MONOCHROME1 inversion; BitsStored -> 16-bit left shift
-  reason: The official metarepository expects 16-bit PNGs. A deterministic conversion is needed, but arbitrary
-    learned/image-enhancement transformations are avoided. Dataset-specific VOI LUT needs must be validated
-    separately before definitive measurements.
+  value: preserve native ordering; MONOCHROME1 inversion; BitsStored -> 16-bit left
+    shift
+  reason: The official metarepository expects 16-bit PNGs. A deterministic conversion
+    is needed, but arbitrary learned/image-enhancement transformations are avoided.
+    Dataset-specific VOI LUT needs must be validated separately before definitive
+    measurements.
 - id: ADD-013
   name: RESOURCE_SAMPLE_SECONDS
   value: 2 seconds by default
-  reason: CPU/RAM/GPU resource metrics need periodic sampling while each real model container is executing.
-    A small configurable interval keeps the prototype simple without a monitoring platform.
+  reason: CPU/RAM/GPU resource metrics need periodic sampling while each real model
+    container is executing. A small configurable interval keeps the prototype simple
+    without a monitoring platform.
 - id: ADD-014
   name: explicit_per_model_runtime_services
   value: gmic-runtime:8011 | nyu-runtime:8012 | glam-runtime:8013
-  reason: This v0.2 decision exposed three controller services. It is superseded because model dependency
-    isolation already occurs in the three upstream model images; three extra controllers were redundant
-    for a thesis prototype.
+  reason: This v0.2 decision exposed three controller services. It is superseded because
+    model dependency isolation already occurs in the three upstream model images;
+    three extra controllers were redundant for a thesis prototype.
   status: superseded
   superseded_by: ADD-017
 - id: ADD-015
   name: single_runner_gpu_semaphore
   value: one GPU inference at a time by default, enforced by model-runner
-  reason: The workstation has one GPU and 16 GB VRAM. The model-runner serializes GPU inference so GMIC,
-    NYU and GLAM do not compete for GPU memory.
+  reason: The workstation has one GPU and 16 GB VRAM. The model-runner serializes
+    GPU inference so GMIC, NYU and GLAM do not compete for GPU memory.
 - id: ADD-016
   name: model_runtime_urls
   value: GMIC_RUNTIME_URL, NYU_RUNTIME_URL, GLAM_RUNTIME_URL
-  reason: Per-model runtime URLs are no longer needed because FastAPI communicates with one model-runner
-    endpoint and identifies the target model in the API path.
+  reason: Per-model runtime URLs are no longer needed because FastAPI communicates
+    with one model-runner endpoint and identifies the target model in the API path.
   status: superseded
   superseded_by: ADD-017
 - id: ADD-017
   name: single_model_runner
   value: model-runner:8010
-  reason: A single lightweight controller is sufficient to orchestrate all three isolated model images.
-    This removes redundant controller containers while preserving separate model dependencies and checkpoints.
+  reason: A single lightweight controller is sufficient to orchestrate all three isolated
+    model images. This removes redundant controller containers while preserving separate
+    model dependencies and checkpoints.
 - id: ADD-018
   name: model_image_names
   value: mammography-model-gmic:research | mammography-model-nyu:research | mammography-model-glam:research
-  reason: Explicit local image names make the distinction between the controller and the actual model
-    environments clear in Docker image listings and thesis documentation.
+  reason: Explicit local image names make the distinction between the controller and
+    the actual model environments clear in Docker image listings and thesis documentation.
 - id: ADD-019
   name: model_runner_dependency_boundary
   value: no PyTorch, TensorFlow, CUDA Toolkit or cuDNN in model-runner
-  reason: The runner schedules Docker jobs and controls GPU access but does not perform neural-network
-    computation. ML/CUDA dependencies remain isolated inside each model image, avoiding incompatible framework
-    stacks in the controller.
+  reason: The runner schedules Docker jobs and controls GPU access but does not perform
+    neural-network computation. ML/CUDA dependencies remain isolated inside each model
+    image, avoiding incompatible framework stacks in the controller.
 - id: ADD-020
   name: model_runner_api_contract
   value: /models, /models/{model}/info, /ensure, /smoke-test, /run
-  reason: One uniform API keeps the application simple while retaining explicit model selection, health/status,
-    provisioning and inference operations.
+  reason: One uniform API keeps the application simple while retaining explicit model
+    selection, health/status, provisioning and inference operations.
 - id: ADD-021
   name: model_runner_official_docker_cli
   value: docker:29-cli (configurable with DOCKER_CLI_IMAGE)
-  reason: The previous runner installed Debian docker.io, which can expose an Engine API version older
-    than Docker Desktop accepts. The runner now uses Docker's official CLI image so it remains a thin
-    Docker client while avoiding the stale CLI package boundary.
+  reason: The previous runner installed Debian docker.io, which can expose an Engine
+    API version older than Docker Desktop accepts. The runner now uses Docker's official
+    CLI image so it remains a thin Docker client while avoiding the stale CLI package
+    boundary.
 - id: ADD-022
   name: model_runner_docker_host
   value: unix:///var/run/docker.sock
-  reason: The runner must talk to the host Docker Engine to build and execute the isolated model images.
-    The socket remains mounted only in model-runner and the Docker host is explicit for WSL2/Docker Desktop
-    diagnostics.
+  reason: The runner must talk to the host Docker Engine to build and execute the
+    isolated model images. The socket remains mounted only in model-runner and the
+    Docker host is explicit for WSL2/Docker Desktop diagnostics.
 - id: ADD-023
   name: model_runner_doctor_endpoint
   value: GET /doctor
-  reason: A thesis prototype should fail transparently. The endpoint distinguishes missing socket, socket
-    permission/ping failure and Docker CLI/API failure without requiring FastAPI to be healthy first.
+  reason: A thesis prototype should fail transparently. The endpoint distinguishes
+    missing socket, socket permission/ping failure and Docker CLI/API failure without
+    requiring FastAPI to be healthy first.
 - id: ADD-024
   name: git_safe_directory_for_host_workspace
   value: /workspace/runtime/mammography_metarepository
-  reason: Git can reject a repository on a WSL/Docker host bind mount when ownership differs inside the
-    model-runner. The runner now adds only this exact metarepository path as a safe.directory before reading
-    its commit and records the action in model_runner.jsonl.
+  reason: Git can reject a repository on a WSL/Docker host bind mount when ownership
+    differs inside the model-runner. The runner now adds only this exact metarepository
+    path as a safe.directory before reading its commit and records the action in model_runner.jsonl.
 - id: ADD-025
   name: legacy_cuda_base_image_compatibility
   value: nvidia/cudagl:10.1-devel-ubuntu18.04
   reason: The three upstream NYU metarepository Dockerfiles reference nvidia/cuda:10.1-base-ubuntu18.04,
-    which is no longer resolvable in the target environment. The runner generates an auditable compatibility
-    Dockerfile that changes only the FROM line; model source commits, model code, dependencies listed
-    by upstream, and checkpoints remain unchanged.
+    which is no longer resolvable in the target environment. The runner generates
+    an auditable compatibility Dockerfile that changes only the FROM line; model source
+    commits, model code, dependencies listed by upstream, and checkpoints remain unchanged.
 - id: ADD-026
   name: compatibility_patch_drift_guard
   value: exact original FROM line required
-  reason: The compatibility patch must fail if the upstream Dockerfile no longer starts with the expected
-    historical base image. This prevents silently applying a thesis runtime patch to a changed upstream
-    definition.
+  reason: The compatibility patch must fail if the upstream Dockerfile no longer starts
+    with the expected historical base image. This prevents silently applying a thesis
+    runtime patch to a changed upstream definition.
 - id: ADD-027
   name: model_runner_error_detail_cli
   value: surface HTTP response detail in ensure and smoke-test commands
-  reason: A research prototype must expose the real model build/inference failure instead of reducing
-    it to a generic HTTP 500 traceback. Detailed failures remain logged and are now also printed by the
-    CLI.
+  reason: A research prototype must expose the real model build/inference failure
+    instead of reducing it to a generic HTTP 500 traceback. Detailed failures remain
+    logged and are now also printed by the CLI.
 - id: ADD-028
   name: legacy_nvidia_repository_key_rotation
-  value: auto; preserve upstream fix when present, otherwise inject CUDA/ML signing-key refresh before
-    apt-get update
-  reason: The real GMIC compatibility build reached apt-get update and failed with NO_PUBKEY A4B469963BF863CC.
-    NVIDIA rotated CUDA repository signing keys; the historical GMIC/GLAM Dockerfiles predate that change,
-    while the NYU classifier Dockerfile already contains a key-refresh workaround. The runner now applies
-    the narrow runtime-only repair reproducibly and logs whether it was injected or already present upstream.
+  value: auto; preserve upstream fix when present, otherwise inject CUDA/ML signing-key
+    refresh before apt-get update
+  reason: The real GMIC compatibility build reached apt-get update and failed with
+    NO_PUBKEY A4B469963BF863CC. NVIDIA rotated CUDA repository signing keys; the historical
+    GMIC/GLAM Dockerfiles predate that change, while the NYU classifier Dockerfile
+    already contains a key-refresh workaround. The runner now applies the narrow runtime-only
+    repair reproducibly and logs whether it was injected or already present upstream.
 - id: ADD-029
   name: fedora_wsl_nvidia_container_toolkit_preflight
-  value: explicit host-side NVIDIA Container Toolkit + CDI diagnostic/setup before legacy GPU tests
-  reason: 'The workstation exposes the RTX 5060 Ti to WSL through nvidia-smi, but Docker 29 reports "failed
-    to discover GPU vendor from CDI: no known GPU vendor found". GPU access must therefore be repaired
-    at the host WSL Docker layer before testing legacy PyTorch/CUDA model compatibility. The project adds
-    host-only scripts; Docker Compose never installs host drivers or mutates NVIDIA host configuration
+  value: explicit host-side NVIDIA Container Toolkit + CDI diagnostic/setup before
+    legacy GPU tests
+  reason: 'The workstation exposes the RTX 5060 Ti to WSL through nvidia-smi, but
+    Docker 29 reports "failed to discover GPU vendor from CDI: no known GPU vendor
+    found". GPU access must therefore be repaired at the host WSL Docker layer before
+    testing legacy PyTorch/CUDA model compatibility. The project adds host-only scripts;
+    Docker Compose never installs host drivers or mutates NVIDIA host configuration
     automatically.'
 - id: ADD-030
   name: blackwell_legacy_cuda_guard
-  value: never run legacy PyTorch/CUDA model image on GPU after failed allocation probe
+  value: never run legacy PyTorch/CUDA model image on GPU after failed allocation
+    probe
   reason: The RTX 5060 Ti is visible to Docker and PyTorch 1.1.0 reports CUDA available/device_count=1,
-    but the first tensor .cuda() allocation hangs. Treat the legacy GPU path as incompatible and preserve
-    it for CPU reproducibility only.
+    but the first tensor .cuda() allocation hangs. Treat the legacy GPU path as incompatible
+    and preserve it for CPU reproducibility only.
 - id: ADD-031
   name: gmic_blackwell_runtime_profile
-  value: mammography-model-gmic:blackwell-cu128; Python 3.10; PyTorch 2.7.1; torchvision 0.22.1; CUDA
-    12.8 wheel
-  reason: PyTorch 2.7 introduced official Blackwell support with CUDA 12.8. The profile preserves the
-    GMIC source commit and checkpoints, and applies only a narrow API compatibility replacement for the
-    removed/deprecated torch.has_cudnn access; architecture, learned weights and inference semantics are
-    not intentionally changed.
+  value: mammography-model-gmic:blackwell-cu128; Python 3.10; PyTorch 2.7.1; torchvision
+    0.22.1; CUDA 12.8 wheel
+  reason: PyTorch 2.7 introduced official Blackwell support with CUDA 12.8. The profile
+    preserves the GMIC source commit and checkpoints, and applies only a narrow API
+    compatibility replacement for the removed/deprecated torch.has_cudnn access; architecture,
+    learned weights and inference semantics are not intentionally changed.
 - id: ADD-032
   name: gpu_probe_fail_safe
-  value: runner-managed GPU probe with hard timeout and unconditional docker rm -f cleanup
-  reason: External shell timeout can leave detached model containers running. The runner now owns the
-    probe lifecycle and always removes the test container, while logging the exact stage that succeeds
-    or fails.
+  value: runner-managed GPU probe with hard timeout and unconditional docker rm -f
+    cleanup
+  reason: External shell timeout can leave detached model containers running. The
+    runner now owns the probe lifecycle and always removes the test container, while
+    logging the exact stage that succeeds or fails.
 - id: ADD-033
   name: dual_runtime_model_images
   value: legacy :research for CPU; :blackwell-cu128 for validated GPU compatibility
-  reason: Keep the original legacy environment available for reproducibility while using a separate auditable
-    GPU runtime on modern Blackwell hardware. The runtime chosen is explicit in status, logs and registry.
+  reason: Keep the original legacy environment available for reproducibility while
+    using a separate auditable GPU runtime on modern Blackwell hardware. The runtime
+    chosen is explicit in status, logs and registry.
 - id: ADD-034
   name: gpu_probe_success_logging_duplicate_model_fix
   value: pass the GPU probe result record once to the structured logger
-  reason: The real RTX 5060 Ti GPU probe reached its success path, wrote the GPU_READY result, and then
-    the runner raised a Python TypeError because the logging call supplied `model` both explicitly and
-    inside `**result`. This fix changes only observability/error handling; no model source, architecture,
-    weights, runtime dependency, CUDA operation or inference behavior changes.
+  reason: The real RTX 5060 Ti GPU probe reached its success path, wrote the GPU_READY
+    result, and then the runner raised a Python TypeError because the logging call
+    supplied `model` both explicitly and inside `**result`. This fix changes only
+    observability/error handling; no model source, architecture, weights, runtime
+    dependency, CUDA operation or inference behavior changes.
 - id: ADD-035
   name: gpu_runtime_profile_model_metadata
-  value: gpu_compatibility.profile is defined only in config/models.yaml for each model
-  reason: A GPU runtime profile describes technical compatibility of a specific model (Python, framework
-    and CUDA runtime). It is model metadata, not a deployment switch, so it must not be globally overridden
-    from .env.
+  value: gpu_compatibility.profile is defined only in config/models.yaml for each
+    model
+  reason: A GPU runtime profile describes technical compatibility of a specific model
+    (Python, framework and CUDA runtime). It is model metadata, not a deployment switch,
+    so it must not be globally overridden from .env.
 - id: ADD-036
   name: per_model_device_selection
   value: DEFAULT_MODEL_DEVICE plus GMIC_DEVICE, NYU_DEVICE and GLAM_DEVICE; each cpu|gpu
-  reason: Device choice is a deployment concern and can legitimately differ by model while compatibility
-    work is validated incrementally. This allows GMIC to run on its validated Blackwell profile while
-    NYU and GLAM remain on CPU.
+  reason: Device choice is a deployment concern and can legitimately differ by model
+    while compatibility work is validated incrementally. This allows GMIC to run on
+    its validated Blackwell profile while NYU and GLAM remain on CPU.
 - id: ADD-037
   name: validated_gpu_image_only
-  value: GPU inference always resolves the model-specific gpu_compatibility.image and requires a successful
-    gpu_probe; ALLOW_LEGACY_GPU is removed
-  reason: The dual-runtime design already prevents the legacy :research image from being selected for
-    GPU. Keeping a second legacy-GPU flag was redundant and could confuse the thesis prototype configuration.
+  value: GPU inference always resolves the model-specific gpu_compatibility.image
+    and requires a successful gpu_probe; ALLOW_LEGACY_GPU is removed
+  reason: The dual-runtime design already prevents the legacy :research image from
+    being selected for GPU. Keeping a second legacy-GPU flag was redundant and could
+    confuse the thesis prototype configuration.
 - id: ADD-038
   name: nyu_blackwell_runtime_profile
-  value: mammography-model-nyu:blackwell-cu128; Python 3.10; PyTorch 2.7.1; torchvision 0.22.1; CUDA 12.8
-    wheel
-  reason: The legacy DMV-CNN/NYU image uses PyTorch 0.4.1 with a CUDA 9.2 wheel. A separate Blackwell-compatible
-    runtime is required for RTX 5060 Ti validation while preserving the pinned NYU source commit, pretrained
-    checkpoints, architecture and inference contract.
+  value: mammography-model-nyu:blackwell-cu128; Python 3.10; PyTorch 2.7.1; torchvision
+    0.22.1; CUDA 12.8 wheel
+  reason: The legacy DMV-CNN/NYU image uses PyTorch 0.4.1 with a CUDA 9.2 wheel. A
+    separate Blackwell-compatible runtime is required for RTX 5060 Ti validation while
+    preserving the pinned NYU source commit, pretrained checkpoints, architecture
+    and inference contract.
 - id: ADD-039
   name: model_owned_gpu_compatibility_patch_audit
   value: compatibility_code_patches list under each model gpu_compatibility block
-  reason: GMIC and NYU require different narrow compatibility edits. Audit metadata must come from the
-    selected model profile instead of a hard-coded GMIC patch description in the generic Model Runner.
+  reason: GMIC and NYU require different narrow compatibility edits. Audit metadata
+    must come from the selected model profile instead of a hard-coded GMIC patch description
+    in the generic Model Runner.
 - id: ADD-040
   name: glam_blackwell_runtime_profile
-  value: mammography-model-glam:blackwell-cu128; Python 3.10; PyTorch 2.7.1; torchvision 0.22.1; CUDA 12.8 wheel
-  reason: The legacy GLAM image uses PyTorch 1.1.0 and a CUDA 9.x-era binary plus a strict runtime-version assertion. A separate Blackwell-compatible runtime is required for RTX 5060 Ti validation while preserving the pinned GLAM source commit, pretrained checkpoints, architecture and inference contract.
+  value: mammography-model-glam:blackwell-cu128; Python 3.10; PyTorch 2.7.1; torchvision
+    0.22.1; CUDA 12.8 wheel
+  reason: The legacy GLAM image uses PyTorch 1.1.0 and a CUDA 9.x-era binary plus
+    a strict runtime-version assertion. A separate Blackwell-compatible runtime is
+    required for RTX 5060 Ti validation while preserving the pinned GLAM source commit,
+    pretrained checkpoints, architecture and inference contract.
 - id: ADD-041
   name: glam_runtime_semantics_compatibility
-  value: headless plotting, modern cuDNN capability API, device-local intermediate tensors, legacy integer index division, legacy grid_sample alignment
-  reason: PyTorch/Matplotlib runtime semantics changed since the pinned GLAM implementation. These narrow compatibility edits are required to execute the same inference graph on a modern Blackwell runtime without changing model layers, learned parameters, checkpoint selection, output contract or training state.
+  value: headless plotting, modern cuDNN capability API, device-local intermediate
+    tensors, legacy integer index division, legacy grid_sample alignment
+  reason: PyTorch/Matplotlib runtime semantics changed since the pinned GLAM implementation.
+    These narrow compatibility edits are required to execute the same inference graph
+    on a modern Blackwell runtime without changing model layers, learned parameters,
+    checkpoint selection, output contract or training state.
 - id: ADD-042
   name: cbis_ddsm_official_tcia_metadata_adapter
-  value: recursively ingest the four official CBIS-DDSM classification CSVs plus the authorized TCIA/NBIA DICOM tree
-  reason: The previous generic adapter required a researcher-authored source_manifest.csv. v0.13 removes that manual and error-prone mapping step for CBIS-DDSM by deriving patient, laterality, view and pathology only from the official release metadata and resolving those rows to downloaded DICOM files.
+  value: recursively ingest the four official CBIS-DDSM classification CSVs plus the
+    authorized TCIA/NBIA DICOM tree
+  reason: The previous generic adapter required a researcher-authored source_manifest.csv.
+    v0.13 removes that manual and error-prone mapping step for CBIS-DDSM by deriving
+    patient, laterality, view and pathology only from the official release metadata
+    and resolving those rows to downloaded DICOM files.
 - id: ADD-043
   name: cbis_ddsm_pathology_only_ground_truth
-  value: MALIGNANT=1; BENIGN=0; BENIGN_WITHOUT_CALLBACK=0; unknown pathology rejected; BI-RADS never converted to cancer labels
-  reason: The thesis evaluates cancer classification. Ground truth must come from pathology supplied by the dataset, not from a heuristic conversion of radiologist assessment categories.
+  value: MALIGNANT=1; BENIGN=0; BENIGN_WITHOUT_CALLBACK=0; unknown pathology rejected;
+    BI-RADS never converted to cancer labels
+  reason: The thesis evaluates cancer classification. Ground truth must come from
+    pathology supplied by the dataset, not from a heuristic conversion of radiologist
+    assessment categories.
 - id: ADD-044
   name: cbis_ddsm_recursive_raw_layout
-  value: any NBIA-generated folder hierarchy is accepted under /workspace/datasets/raw/cbis_ddsm; official CSVs are discovered recursively
-  reason: NBIA Data Retriever may preserve collection/case/UID directory levels. Requiring the researcher to flatten or rename roughly 160 GB of downloaded data would be fragile and unnecessary; the adapter resolves official paths by suffix/UID and caches a DICOM header index when needed.
+  value: any NBIA-generated folder hierarchy is accepted under /workspace/datasets/raw/cbis_ddsm;
+    official CSVs are discovered recursively
+  reason: NBIA Data Retriever may preserve collection/case/UID directory levels. Requiring
+    the researcher to flatten or rename roughly 160 GB of downloaded data would be
+    fragile and unnecessary; the adapter resolves official paths by suffix/UID and
+    caches a DICOM header index when needed.
 - id: ADD-045
   name: cbis_ddsm_four_view_ensemble_gate
-  value: require L-CC, R-CC, L-MLO and R-MLO for the current GMIC+NYU+GLAM ensemble; incomplete exams are catalogued and rejected, never duplicated or synthesized
-  reason: The selected DMV-CNN/NYU exam-level classifier requires all four standard views. Fabricating a missing contralateral or projection view would change the scientific input and invalidate the evaluation, so v0.13 exposes compatibility counts before conversion.
+  value: require L-CC, R-CC, L-MLO and R-MLO for the current GMIC+NYU+GLAM ensemble;
+    incomplete exams are catalogued and rejected, never duplicated or synthesized
+  reason: The selected DMV-CNN/NYU exam-level classifier requires all four standard
+    views. Fabricating a missing contralateral or projection view would change the
+    scientific input and invalidate the evaluation, so v0.13 exposes compatibility
+    counts before conversion.
 - id: ADD-046
   name: cbis_ddsm_inspection_artifacts
-  value: metadata row catalog, view catalog, unresolved-row report, incomplete-study report, generated source_manifest.csv and cached DICOM header index
-  reason: Dataset adaptation is part of the thesis evidence. Persisting each mapping/rejection decision makes the transformation reproducible, auditable and diagnosable before expensive PNG conversion or model inference.
+  value: metadata row catalog, view catalog, unresolved-row report, incomplete-study
+    report, generated source_manifest.csv and cached DICOM header index
+  reason: Dataset adaptation is part of the thesis evidence. Persisting each mapping/rejection
+    decision makes the transformation reproducible, auditable and diagnosable before
+    expensive PNG conversion or model inference.
 - id: ADD-047
   name: validated_three_gpu_env_example
-  value: DEFAULT_MODEL_DEVICE=cpu; GMIC_DEVICE=gpu; NYU_DEVICE=gpu; GLAM_DEVICE=gpu; ALLOW_GPU=true; GPU_NUMBER=0
-  reason: The three model-specific Blackwell runtimes have now passed GPU probes and end-to-end smoke tests on the target RTX 5060 Ti workstation. The distributed example environment should therefore reproduce the validated deployment state instead of the earlier CPU-safe bootstrap state.
+  value: DEFAULT_MODEL_DEVICE=cpu; GMIC_DEVICE=gpu; NYU_DEVICE=gpu; GLAM_DEVICE=gpu;
+    ALLOW_GPU=true; GPU_NUMBER=0
+  reason: The three model-specific Blackwell runtimes have now passed GPU probes and
+    end-to-end smoke tests on the target RTX 5060 Ti workstation. The distributed
+    example environment should therefore reproduce the validated deployment state
+    instead of the earlier CPU-safe bootstrap state.
 - id: ADD-048
   name: cbis_ddsm_metadata_preflight_guard
-  value: inspect/prepare return METADATA_REQUIRED with exact missing files and instructions; DICOM indexing is not started until all four official classification tables are present
-  reason: NBIA image transfer can complete without the separate TCIA classification CSV supporting data. A research workflow should fail early and actionably rather than emit a Python traceback or spend time indexing DICOM files that cannot yet be labeled.
+  value: inspect/prepare return METADATA_REQUIRED with exact missing files and instructions;
+    DICOM indexing is not started until all four official classification tables are
+    present
+  reason: NBIA image transfer can complete without the separate TCIA classification
+    CSV supporting data. A research workflow should fail early and actionably rather
+    than emit a Python traceback or spend time indexing DICOM files that cannot yet
+    be labeled.
 - id: ADD-049
   name: cbis_ddsm_metadata_filename_aliases
-  value: canonical *_case_description_* filenames plus TCIA Mass/Calc-Training/Test-Description.csv aliases
-  reason: TCIA data-access labels and downloaded filenames can differ while representing the same four official classification tables. Recognizing explicit aliases removes a packaging/layout dependency without changing metadata content or ground-truth semantics.
+  value: canonical *_case_description_* filenames plus TCIA Mass/Calc-Training/Test-Description.csv
+    aliases
+  reason: TCIA data-access labels and downloaded filenames can differ while representing
+    the same four official classification tables. Recognizing explicit aliases removes
+    a packaging/layout dependency without changing metadata content or ground-truth
+    semantics.
+- id: ADD-050
+  name: cbis_ddsm_non_destructive_dicom_download_policy
+  value: dataset_pipeline.download never transfers DICOM bytes; existing raw DICOM
+    tree is reused; missing DICOM returns DICOM_DOWNLOAD_REQUIRED
+  reason: The CBIS-DDSM image collection is large and is already acquired through
+    the official TCIA/NBIA mechanism. Re-running a prototype command must not duplicate
+    ~163 GB, consume bandwidth or overwrite research inputs.
+- id: ADD-051
+  name: cbis_ddsm_automatic_official_metadata_acquisition
+  value: download only missing official mass/calc train/test case-description CSVs;
+    validate SHA-256 and required columns; reuse valid copies
+  reason: The four small supporting tables are required for pathology ground truth
+    but are separate from the NBIA DICOM transfer. Automating this small deterministic
+    step removes manual curl/file-placement work without bypassing image access controls.
+- id: ADD-052
+  name: cbis_ddsm_auxiliary_series_metadata
+  value: optional metadata.csv PatientID/StudyInstanceUID/SeriesInstanceUID enrichment
+    joined by unique SeriesInstanceUID; never used as ground truth
+  reason: The TCIA metadata export can encode participant, laterality and view in
+    PatientID while DICOM headers or opaque NBIA paths may not. Using it only as an
+    identity map can recover standard views without inventing labels or synthesizing
+    images.
+- id: ADD-053
+  name: cbis_ddsm_reuse_completed_dicom_index
+  value: reuse /workspace/runtime/dataset_cache/cbis_ddsm_dicom_index.csv by default;
+    --force-dicom-index explicitly rebuilds after raw-tree changes
+  reason: The first real inspection on the target WSL/NTFS workspace took about 11m33s.
+    Reopening/rescanning the unchanged DICOM tree on every inspect is unnecessary;
+    cache invalidation is therefore an explicit researcher action when the dataset
+    changes.
+- id: ADD-054
+  name: cbis_ddsm_explicit_object_inventory
+  value: inspect reports DICOM objects, full mammograms, crops, ROI masks, other DICOM,
+    selected full views and complete-study ground-truth counts
+  reason: Dataset evaluation must distinguish files/images, abnormality metadata rows,
+    participants and four-view evaluation units. Explicit counts prevent methodological
+    ambiguity in the thesis and in experiment manifests.
+- id: ADD-055
+  name: validated_env_example_retained_v015
+  value: DEFAULT_MODEL_DEVICE=cpu; GMIC_DEVICE=gpu; NYU_DEVICE=gpu; GLAM_DEVICE=gpu;
+    ALLOW_GPU=true; GPU_NUMBER=0
+  reason: v0.15 changes only dataset acquisition/inspection. The distributed environment
+    example must retain the model-device configuration that has already passed real
+    GPU probes and smoke tests rather than introducing untested settings.
+- id: ADD-056
+  name: gmic_blackwell_legacy_integer_index_semantics
+  value: src/utilities/tools.py get_max_window uses torch.div(max_linear_idx, W_map,
+    rounding_mode=floor); GMIC gpu build_revision=2
+  reason: The first real CBIS-DDSM integration exposed a negative ROI coordinate under
+    modern true-division semantics. The pinned PyTorch-1.1-era code expected integer
+    quotient/remainder indices. Preserving that historical arithmetic fixes runtime
+    compatibility without changing model architecture, checkpoints, weights, saliency
+    objective or training state.
+- id: ADD-057
+  name: healthcheck_access_log_state_transitions
+  value: log first /health state, first failure and first recovery; suppress repeated
+    access logs with unchanged health state
+  reason: Docker probes every 15 seconds and repeated 200 access lines obscure research/model
+    logs. State-transition logging preserves operational signal without changing the
+    healthcheck itself.
+- id: ADD-058
+  name: container_version_exposure
+  value: VERSION copied to /app/VERSION and /runner/VERSION; API health/doctor report
+    current package version (0.18.0)
+  reason: Runtime version must be directly verifiable inside the running containers
+    and must not retain stale hardcoded endpoint versions.
+- id: ADD-059
+  name: parameterized_gpu_release_validation
+  value: model_tools.validate_gpu accepts one or more models or all; phases are ensure_gpu
+    for all selected, gpu_probe for successful ensures, then smoke_test for successful
+    probes; report persisted under workspace/output/model_validation
+  reason: Repeating three separate commands per model is error-prone after compatibility
+    revisions. A deterministic orchestration command provides one auditable validation
+    flow while preserving model-specific images, profiles and evidence.
+- id: ADD-060
+  name: explicit_gpu_force_rebuild
+  value: ensure-gpu accepts force_rebuild; validate_gpu exposes --force-rebuild; default
+    remains idempotent and rebuilds only when image is missing or build_revision changes
+  reason: Normal validation should reuse already validated image bytes, but research/release
+    troubleshooting sometimes requires a deliberate fresh build. Making this explicit
+    prevents unnecessary rebuilds while preserving a reproducible escape hatch.
+- id: ADD-061
+  name: gpu_validation_device_guard
+  value: integrated GPU smoke validation requires each selected model to resolve device=gpu
+    unless --allow-cpu-smoke is explicitly supplied
+  reason: A successful smoke test routed to a legacy CPU image must never be mistaken
+    for validation of the newly ensured Blackwell GPU image.
+- id: ADD-062
+  name: gmic_metarepository_malignant_only_label_contract
+  value: GMIC Blackwell accepts left_malignant/right_malignant canonical labels; absent
+    benign labels are emitted as NaN output metadata
+  reason: The metarepository canonical batch does not require independent benign labels.
+    GMIC standalone read those labels only after inference to populate its output
+    CSV. Missing optional benign labels must not abort inference and must not be fabricated.

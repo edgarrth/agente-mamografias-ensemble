@@ -6,15 +6,18 @@ from .logging_utils import log_configuration_additions, audit
 from .storage import init_db
 from .datasets.manager import statuses, request_download, prepare, inspect
 from .model_client import status as model_status
+from .health_logging import install_healthcheck_access_filter
+from . import __version__
 
-app=FastAPI(title="Mammography AI Agent",version="0.14.0")
+app=FastAPI(title="Mammography AI Agent",version=__version__)
 
 @app.on_event("startup")
 def startup():
-    ensure_workspace(); log_configuration_additions(); init_db(); audit("APPLICATION_READY")
+    install_healthcheck_access_filter()
+    ensure_workspace(); log_configuration_additions(); init_db(); audit("APPLICATION_READY", version=__version__)
 
 @app.get("/health")
-def health(): return {"status":"ok","research_only":True}
+def health(): return {"status":"ok","research_only":True,"version":__version__}
 
 @app.get("/workspace/status")
 def workspace_status(): return {"datasets":statuses(),"models":model_status()}

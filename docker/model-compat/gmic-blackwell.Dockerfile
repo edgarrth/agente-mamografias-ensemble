@@ -48,5 +48,40 @@ RUN python -m pip install --upgrade pip setuptools wheel \
 # architecture, checkpoint, preprocessing rules or learned parameters.
 RUN sed -i 's/torch.has_cudnn/torch.backends.cudnn.is_available()/g' /home/gmic/GMIC/src/scripts/run_model.py
 
+# The mammography metarepository canonical data contract supplies only breast-level
+# malignant labels. GMIC's standalone runner additionally tries to copy benign
+# labels into its output CSV *after* inference. Do not invent benign ground truth:
+# when those optional keys are absent, preserve the malignant labels and emit NaN
+# for benign_label metadata. This does not alter the model input, forward pass,
+# saliency maps, predictions, architecture or weights.
+RUN python - <<'PY'
+from pathlib import Path
+p = Path('/home/gmic/GMIC/src/scripts/run_model.py')
+t = p.read_text()
+replacements = {
+    'return cancer_label["left_benign"], cancer_label["left_malignant"]':
+        'return cancer_label.get("left_benign", np.nan), cancer_label["left_malignant"]',
+    'return cancer_label["right_benign"], cancer_label["right_malignant"]':
+        'return cancer_label.get("right_benign", np.nan), cancer_label["right_malignant"]',
+}
+for old, new in replacements.items():
+    if old not in t:
+        raise SystemExit(f'GMIC label-contract patch anchor missing: {old}')
+    t = t.replace(old, new, 1)
+p.write_text(t)
+PY
+RUN grep -F 'cancer_label.get("left_benign", np.nan)' /home/gmic/GMIC/src/scripts/run_model.py \
+    && grep -F 'cancer_label.get("right_benign", np.nan)' /home/gmic/GMIC/src/scripts/run_model.py
+
+# Preserve PyTorch 1.1 integer-index semantics used by GMIC ROI proposal.
+# In modern PyTorch, `/` on integer tensors performs true division and can leave
+# a tiny negative remainder in max_idx_y. The historical code expected integer
+# quotient/remainder coordinates. This patch changes only index arithmetic; model
+# architecture, weights, saliency computation and crop-selection objective are unchanged.
+RUN sed -i 's|max_idx_x = max_linear_idx / W_map|max_idx_x = torch.div(max_linear_idx, W_map, rounding_mode="floor")|' \
+      /home/gmic/GMIC/src/utilities/tools.py \
+    && grep -F 'max_idx_x = torch.div(max_linear_idx, W_map, rounding_mode="floor")' \
+      /home/gmic/GMIC/src/utilities/tools.py
+
 RUN mkdir -p /home/predictions && chmod 777 /home/predictions
 WORKDIR /home/gmic/GMIC

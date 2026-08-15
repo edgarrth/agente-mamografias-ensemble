@@ -30,11 +30,14 @@ models:
       torch: 2.7.1
       torchvision: 0.22.1
       cuda_wheel: '12.8'
+      build_revision: 3
       reason: The legacy GMIC image uses PyTorch 1.1.0 built for CUDA 9.0. It can enumerate the RTX 5060 Ti but
         hangs on the first CUDA tensor allocation. Use a separate Blackwell-compatible runtime while preserving
         the original GMIC source commit and checkpoints.
       compatibility_code_patches:
       - 'src/scripts/run_model.py: torch.has_cudnn -> torch.backends.cudnn.is_available()'
+      - 'src/utilities/tools.py: preserve PyTorch 1.1 integer quotient/remainder semantics in get_max_window with torch.div(..., rounding_mode=floor)'
+      - 'src/scripts/run_model.py: accept the metarepository malignant-only cancer_label contract; missing benign labels are emitted as NaN output metadata and never synthesized'
   nyu:
     academic_name: DMV-CNN / NYU Breast Cancer Classifier
     upstream_model_name: nyu_model

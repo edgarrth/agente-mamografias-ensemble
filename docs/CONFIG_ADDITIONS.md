@@ -282,3 +282,82 @@ Los parches de compatibilidad GPU se describen ahora dentro del bloque `gpu_comp
 **Valor:** se reconocen los nombres canónicos y aliases `Mass/Calc-Training/Test-Description.csv`.
 
 **Por qué:** desacopla el adapter del nombre de descarga sin modificar contenido, etiquetas ni procedencia de la metadata.
+
+## ADD-050 — cbis_ddsm_non_destructive_dicom_download_policy — **active**
+
+**Valor:** `dataset_pipeline.download` nunca transfiere bytes DICOM. Si el árbol raw ya existe, se reutiliza; si falta, devuelve `DICOM_DOWNLOAD_REQUIRED`.
+
+**Por qué:** evita duplicar ~163 GB, consumir ancho de banda o sobrescribir insumos de investigación al repetir un comando idempotente del prototipo.
+
+## ADD-051 — cbis_ddsm_automatic_official_metadata_acquisition — **active**
+
+**Valor:** solo los cuatro CSV oficiales mass/calc train/test pueden descargarse automáticamente cuando faltan. Cada archivo se valida por SHA-256 y columnas obligatorias; copias válidas existentes se reutilizan.
+
+**Por qué:** esos cuatro archivos pequeños son necesarios para `pathology` y están separados del transfer DICOM de NBIA. Automatizar este paso elimina trabajo manual sin automatizar ni eludir la adquisición de imágenes.
+
+## ADD-052 — cbis_ddsm_auxiliary_series_metadata — **active**
+
+**Valor:** `metadata.csv` es opcional y se une por `SeriesInstanceUID` único para enriquecer `PatientID`, `StudyInstanceUID`, lateralidad y vista. Nunca se usa como ground truth.
+
+**Por qué:** la exportación TCIA puede codificar identidad de paciente/vista en `PatientID` aunque el header DICOM o la ruta NBIA no la expongan de forma utilizable. La fuente de etiqueta sigue siendo exclusivamente `pathology` de los case-description CSV.
+
+## ADD-053 — cbis_ddsm_reuse_completed_dicom_index — **active**
+
+**Valor:** se reutiliza por defecto `/workspace/runtime/dataset_cache/cbis_ddsm_dicom_index.csv`; `--force-dicom-index` reconstruye explícitamente el índice cuando cambió el árbol DICOM.
+
+**Por qué:** el primer `inspect` real sobre `/mnt/d` tardó ~11m33s. Una inspección repetida sobre un dataset sin cambios no debe volver a recorrer/abrir 10k+ DICOM innecesariamente.
+
+## ADD-054 — cbis_ddsm_explicit_object_inventory — **active**
+
+**Valor:** `inspect` reporta `dicom_objects`, `full_mammogram_images`, `cropped_images`, `roi_masks`, `other_dicom_images`, `selected_full_view_images` y `complete_study_ground_truth_counts`.
+
+**Por qué:** la tesis debe diferenciar claramente archivos/imágenes, filas de anormalidad, participantes y unidades de evaluación de cuatro vistas.
+
+## ADD-055 — validated_env_example_retained_v015 — **active**
+
+**Valor:** `.env.example` conserva `DEFAULT_MODEL_DEVICE=cpu`, `GMIC_DEVICE=gpu`, `NYU_DEVICE=gpu`, `GLAM_DEVICE=gpu`, `ALLOW_GPU=true`, `GPU_NUMBER=0`.
+
+**Por qué:** v0.15 cambia solo la capa de datasets; no introduce una configuración de modelos no probada.
+
+## ADD-056 — gmic_blackwell_legacy_integer_index_semantics — **active**
+
+**Valor:** GMIC Blackwell usa `torch.div(max_linear_idx, W_map, rounding_mode="floor")` en `get_max_window` y `build_revision=2`.
+
+**Por qué:** la primera integración con CBIS-DDSM real expuso una coordenada ROI negativa causada por semántica moderna de división verdadera. La corrección preserva el cálculo entero histórico; no modifica arquitectura, pesos, checkpoints ni entrenamiento.
+
+## ADD-057 — healthcheck_access_log_state_transitions — **active**
+
+**Valor:** primer estado `/health`, primer fallo y primera recuperación se registran; probes repetidos con el mismo estado se suprimen.
+
+**Por qué:** reduce ruido de `docker compose logs` sin ocultar pérdida o recuperación de salud.
+
+## ADD-058 — container_version_exposure — **active**
+
+**Valor:** `VERSION` existe en `/app/VERSION` y `/runner/VERSION`; `/health`/`/doctor` exponen la versión actual (`0.18.0` en este paquete).
+
+**Por qué:** permite verificar exactamente qué build está corriendo y elimina versiones hardcodeadas obsoletas.
+
+## ADD-059 — parameterized_gpu_release_validation — **active**
+
+**Valor:** `python -m model_tools.validate_gpu --models <uno|varios|all>` ejecuta `ensure_gpu` para todos los seleccionados, después `gpu_probe`, y finalmente smoke tests. Persiste un reporte JSON por corrida.
+
+**Por qué:** reduce pasos manuales repetitivos y deja una evidencia única de que la revisión configurada de cada runtime existe, ejecuta CUDA y completa inferencia upstream.
+
+## ADD-060 — explicit_gpu_force_rebuild — **active**
+
+**Valor:** `--force-rebuild` fuerza un rebuild de las imágenes GPU seleccionadas. Sin el flag, `ensure_gpu` conserva semántica idempotente y solo reconstruye si falta la imagen o cambió `build_revision`.
+
+**Por qué:** evita rebuilds costosos por defecto, pero permite demostrar una reconstrucción desde cero cuando sea metodológicamente necesario.
+
+## ADD-061 — gpu_validation_device_guard — **active**
+
+**Valor:** el smoke test de la validación integrada exige `<MODEL>_DEVICE=gpu`; `--allow-cpu-smoke` es una excepción explícita.
+
+**Por qué:** impide confundir un smoke test CPU exitoso con evidencia de que la imagen Blackwell recién asegurada realmente fue utilizada.
+
+
+## ADD-062 — gmic_metarepository_malignant_only_label_contract — **active**
+
+**Valor:** el runtime GMIC Blackwell acepta `cancer_label` con `left_malignant` y `right_malignant`; si `left_benign`/`right_benign` no existen, solo las columnas `benign_label` del CSV se registran como `NaN`.
+
+**Por qué:** el metarepository define las etiquetas canónicas breast-level mediante presencia de malignidad. El runner standalone de GMIC intentaba leer etiquetas benignas adicionales después del forward, provocando `KeyError` con datasets reales adaptados. No se debe inventar `benign = 1 - malignant`; la ausencia se representa explícitamente como dato no disponible.

@@ -16,6 +16,8 @@ import threading
 import time
 import yaml
 
+from .health_logging import install_healthcheck_access_filter
+
 WORKSPACE = Path(os.getenv("WORKSPACE_ROOT", "/workspace"))
 CONFIG = Path("/runner/config")
 META = WORKSPACE / "runtime" / "mammography_metarepository"
@@ -26,7 +28,8 @@ GPU = os.getenv("GPU_NUMBER", "0")
 BOOTSTRAP_MODE = os.getenv("MODEL_BOOTSTRAP_MODE", "lazy").lower()
 RESOURCE_SAMPLE_SECONDS = float(os.getenv("RESOURCE_SAMPLE_SECONDS", "2"))
 
-app = FastAPI(title="Mammography Model Runner", version="0.14.0")
+APP_VERSION = "0.18.0"
+app = FastAPI(title="Mammography Model Runner", version=APP_VERSION)
 
 
 def cfg() -> dict:
@@ -363,7 +366,7 @@ def gpu_probe_passed(model: str) -> bool:
         return False
 
 
-def ensure_gpu_image(model: str) -> dict:
+def ensure_gpu_image(model: str, force_rebuild: bool = False) -> dict:
     model = model.strip().lower()
     spec = spec_for(model)
     compat = gpu_compatibility_for(model)
@@ -377,10 +380,14 @@ def ensure_gpu_image(model: str) -> dict:
         raise FileNotFoundError(f"GPU compatibility Dockerfile is missing: {dockerfile}")
     commit = ensure_meta()
     tag = gpu_image_tag(model)
+    build_revision = int(compat.get("build_revision", 1))
+    dockerfile_sha256 = hashlib.sha256(dockerfile.read_bytes()).hexdigest()
     metadata = {
         "mode": "gpu_runtime_compatibility",
         "profile": configured_profile,
         "dockerfile": str(dockerfile),
+        "dockerfile_sha256": dockerfile_sha256,
+        "build_revision": build_revision,
         "python": str(compat.get("python")),
         "torch": str(compat.get("torch")),
         "torchvision": str(compat.get("torchvision")),
@@ -395,13 +402,25 @@ def ensure_gpu_image(model: str) -> dict:
         "runtime_dependencies_changed": True,
     }
     with shared_lock(f"gpu_image_build_{model}"):
-        if not gpu_image_exists(model):
-            log("GPU_MODEL_IMAGE_BUILD_STARTED", model=model, image=tag, **metadata)
-            sh(["docker", "build", "-t", tag, "-f", str(dockerfile), "."], cwd=META, timeout=7200, model=model)
-            log("GPU_MODEL_IMAGE_BUILD_COMPLETED", model=model, image=tag, **metadata)
         audit = WORKSPACE / "models" / "compatibility"
         audit.mkdir(parents=True, exist_ok=True)
-        (audit / f"{model}-gpu.json").write_text(
+        audit_file = audit / f"{model}-gpu.json"
+        previous_revision = 1
+        if audit_file.is_file():
+            try:
+                previous_revision = int(json.loads(audit_file.read_text(encoding="utf-8")).get("build_revision", 1))
+            except Exception:
+                previous_revision = 1
+        image_present = gpu_image_exists(model)
+        rebuild_required = bool(force_rebuild) or (not image_present) or previous_revision != build_revision
+        if rebuild_required:
+            log("GPU_MODEL_IMAGE_BUILD_STARTED", model=model, image=tag, previous_revision=previous_revision, force_rebuild=bool(force_rebuild), **metadata)
+            sh(["docker", "build", "-t", tag, "-f", str(dockerfile), "."], cwd=META, timeout=7200, model=model)
+            probe = gpu_probe_path(model)
+            if probe.exists():
+                probe.unlink()
+            log("GPU_MODEL_IMAGE_BUILD_COMPLETED", model=model, image=tag, previous_revision=previous_revision, force_rebuild=bool(force_rebuild), probe_invalidated=True, **metadata)
+        audit_file.write_text(
             json.dumps({"image": tag, "metarepo_commit": commit, **metadata}, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
@@ -412,6 +431,8 @@ def ensure_gpu_image(model: str) -> dict:
         "gpu_compatibility": metadata,
         "status": "READY",
         "runner_service": "model-runner",
+        "rebuild_performed": rebuild_required,
+        "force_rebuild": bool(force_rebuild),
     }
 
 
@@ -776,6 +797,7 @@ def model_info(model: str) -> dict:
 
 @app.on_event("startup")
 def startup():
+    install_healthcheck_access_filter()
     diagnostics = docker_diagnostics()
     log(
         "MODEL_RUNNER_READY",
@@ -804,7 +826,7 @@ def doctor():
     d = docker_diagnostics()
     return {
         "service": "model-runner",
-        "version": "0.10.0",
+        "version": APP_VERSION,
         "default_model_device": DEFAULT_MODEL_DEVICE,
         "model_devices": configured_devices(),
         "gpu_profiles": configured_gpu_profiles(),
@@ -838,7 +860,7 @@ def health():
     return {
         "status": "ok",
         "service": "model-runner",
-        "version": "0.10.0",
+        "version": APP_VERSION,
         "default_model_device": DEFAULT_MODEL_DEVICE,
         "model_devices": configured_devices(),
         "gpu_profiles": configured_gpu_profiles(),
@@ -875,9 +897,9 @@ def ensure(model: str):
 
 
 @app.post("/models/{model}/ensure-gpu")
-def ensure_gpu(model: str):
+def ensure_gpu(model: str, force_rebuild: bool = False):
     try:
-        return ensure_gpu_image(model)
+        return ensure_gpu_image(model, force_rebuild=force_rebuild)
     except Exception as exc:
         log("GPU_MODEL_ENSURE_FAILED", model=model, error=str(exc))
         raise HTTPException(500, str(exc))

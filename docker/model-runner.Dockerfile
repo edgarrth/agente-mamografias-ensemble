@@ -24,6 +24,7 @@ ENV PATH="/opt/runner-venv/bin:${PATH}" \
     PYTHONPATH=/runner \
     DOCKER_HOST=unix:///var/run/docker.sock
 
+COPY VERSION /runner/VERSION
 COPY model_runner /runner/model_runner
 COPY config /runner/config
 COPY docker/model-compat /runner/model_compat
