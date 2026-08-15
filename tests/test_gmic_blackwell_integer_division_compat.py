@@ -18,7 +18,7 @@ def test_gmic_build_revision_forces_one_time_rebuild_without_touching_other_prof
     cfg=yaml.safe_load(Path("config/models.yaml").read_text(encoding="utf-8"))
     assert cfg["models"]["gmic"]["gpu_compatibility"]["build_revision"] == 3
     assert cfg["models"]["nyu"]["gpu_compatibility"].get("build_revision", 1) == 1
-    assert cfg["models"]["glam"]["gpu_compatibility"].get("build_revision", 1) == 1
+    assert cfg["models"]["glam"]["gpu_compatibility"].get("build_revision", 1) == 2
     runner=Path("model_runner/api.py").read_text(encoding="utf-8")
     assert "previous_revision != build_revision" in runner
     assert "probe.unlink()" in runner

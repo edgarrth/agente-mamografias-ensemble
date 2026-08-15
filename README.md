@@ -133,15 +133,18 @@ Esta sección centraliza los comandos usados durante la validación del prototip
 | `docker compose down --remove-orphans` | Detiene la plataforma y elimina contenedores huérfanos. | Contenedores; conserva bind mount `workspace/` y volúmenes nombrados salvo que se añada `-v`. | Servicios detenidos. |
 | `docker compose ps -a` | Muestra estado/health de servicios. | Nada. | `healthy` en dependencias persistentes. |
 | `docker compose logs -f` | Sigue logs de todos los servicios. | Nada. | Logs en vivo. Los `/health` 200 repetidos se suprimen desde v0.16. |
-| `docker compose exec fastapi cat /app/VERSION` | Verifica versión del código dentro de FastAPI. | Nada. | `0.18.0`. |
-| `docker compose exec model-runner cat /runner/VERSION` | Verifica versión del Model Runner. | Nada. | `0.18.0`. |
+| `docker compose logs -f model-runner` | Sigue el ciclo de inferencia del Model Runner: espera/adquisición GPU, inicio de contenedor temporal, inicio/fin de comando, éxito/fallo y métricas resumidas. | Nada. | Eventos de inferencia visibles sin spam de healthchecks. |
+| `./scripts/logs.sh` | Wrapper para seguir en vivo los logs de `fastapi` y `model-runner` con un tail inicial configurable (`TAIL_LINES=200 ./scripts/logs.sh`). | Nada. | Logs operativos de servicios; eventos CLI persisten además en `workspace/logs/*.jsonl`. |
+| `tail -f workspace/logs/audit.jsonl workspace/logs/model_runner.jsonl` | Sigue la auditoría persistente de CLI/pipeline y Runner desde el host. | Nada. | Eventos JSONL incluso cuando el comando se ejecutó mediante `docker compose exec`. |
+| `docker compose exec fastapi cat /app/VERSION` | Verifica versión del código dentro de FastAPI. | Nada. | `0.22.0`. |
+| `docker compose exec model-runner cat /runner/VERSION` | Verifica versión del Model Runner. | Nada. | `0.22.0`. |
 | `docker compose exec model-runner docker version` | Verifica cliente/daemon Docker desde el Runner. | Nada. | Client/Server accesibles. |
 | `docker compose exec model-runner docker info` | Diagnóstico detallado del daemon desde el Runner. | Nada. | Información del Engine sin error. |
 | `docker compose exec fastapi python -m model_tools.status` | Estado de imágenes, perfiles GPU y device por modelo. | Nada. | GMIC/NYU/GLAM `device=gpu` en workstation validada. |
 | `docker compose exec fastapi python -m model_tools.ensure --models gmic nyu glam` | Construye/reutiliza imágenes legacy `:research`. | Imágenes Docker; no cambia pesos/arquitectura. | `READY`. |
-| `docker compose exec fastapi python -m model_tools.ensure_gpu --models gmic` | Construye/reutiliza runtime Blackwell de GMIC. v0.16 detecta `build_revision=2` y reconstruye GMIC una vez para aplicar el fix de índices. | Imagen `mammography-model-gmic:blackwell-cu128`; invalida el probe GPU anterior solo si reconstruye. | `READY`, `build_revision=2`. |
-| `docker compose exec fastapi python -m model_tools.gpu_probe --models gmic` | Prueba asignación y kernel CUDA del runtime reconstruido. | Solo actualiza evidencia `workspace/models/gpu_compatibility/gmic.probe.json`. | `GPU_READY`. |
-| `docker compose exec fastapi python -m model_tools.smoke_test --models gmic nyu glam` | Prueba los modelos con sample data upstream. | `workspace/output/smoke_tests/`; no toca datasets raw. | `READY` por modelo. |
+| `docker compose exec fastapi python -m model_tools.ensure_gpu --models gmic nyu glam` | Construye/reutiliza runtimes Blackwell para uno o más modelos. Revisiones actuales: GMIC=3, NYU=1, GLAM=2. Puede usarse con un subconjunto. | Imágenes GPU seleccionadas; invalida el probe de un modelo solo si ese runtime se reconstruye. | `READY` por modelo y `rebuild_performed` explícito. |
+| `docker compose exec fastapi python -m model_tools.gpu_probe --models gmic nyu glam` | Prueba asignación y kernel CUDA de uno o más runtimes GPU seleccionados. | Actualiza evidencia `workspace/models/gpu_compatibility/<model>.probe.json`; no toca datasets. | `GPU_READY` por modelo. |
+| `docker compose exec fastapi python -m model_tools.smoke_test --models gmic nyu glam` | Prueba los modelos con sample data upstream. | `workspace/output/smoke_tests/`; no toca datasets raw. | `SUCCESS` por inferencia completada. |
 | `docker compose exec fastapi python -m model_tools.validate_gpu --models all` | Orquestación de release/validación: asegura la revisión GPU configurada de GMIC+NYU+GLAM, ejecuta `gpu_probe` de todos y luego smoke test de todos. También acepta uno o más modelos (`--models gmic nyu`). | Puede reconstruir solo las imágenes cuyo `build_revision` cambió; renueva sus probes y escribe evidencia JSON en `workspace/output/model_validation/`; no modifica datasets. | `overall_status=READY` y `PASS` en `ensure_gpu`, `gpu_probe` y `smoke_test` por modelo. |
 | `docker compose exec fastapi python -m model_tools.validate_gpu --models all --force-rebuild` | Igual que el anterior, pero fuerza reconstrucción de todas las imágenes GPU seleccionadas aunque su revisión ya coincida. Úselo solo cuando se quiera validar bytes nuevos explícitamente. | Rebuild de imágenes seleccionadas, invalida/renueva probes y escribe reporte; no toca datasets. | `rebuild_performed=true` por modelo y validación completa. |
 | `./scripts/validate-models.sh all` o `./scripts/validate-models.sh gmic nyu` | Wrapper host del comando integrado anterior; evita escribir el `docker compose exec ...` completo y acepta uno o más modelos. | Los mismos efectos de `model_tools.validate_gpu`; no modifica datasets. | Mismo JSON/resumen de validación. |
@@ -150,8 +153,11 @@ Esta sección centraliza los comandos usados durante la validación del prototip
 | `docker compose exec fastapi python -m dataset_pipeline.inspect --datasets cbis_ddsm` | Cruza metadata, reutiliza índice DICOM y construye catálogos/manifiesto de estudios completos. | `manifests/`, `rejected/`, `source_manifest.csv`, cache de índice; no modifica pixels raw. | Conteos de pacientes/vistas y `ensemble_compatible`. |
 | `docker compose exec fastapi python -m dataset_pipeline.inspect --datasets cbis_ddsm --force-dicom-index` | Igual que `inspect`, pero reconstruye headers DICOM. | Reescribe cache del índice; no modifica DICOM. | Mucho más lento; usar solo si cambió el árbol raw. |
 | `docker compose exec fastapi python -m dataset_pipeline.prepare --datasets cbis_ddsm` | Convierte **solo estudios de 4 vistas compatibles** a PNG 16-bit y escribe manifiesto canónico. | Escribe/regenera `processed/cbis_ddsm/images/*.png` y `manifests/cbis_ddsm.csv`; **no limpia, borra ni modifica DICOM raw**. No elimina derivados antiguos no referenciados. | `AVAILABLE`, `converted_studies=...`. |
-| `docker compose exec fastapi python -m tests_flow.normal --datasets cbis_ddsm --samples 5 --max-runtime-minutes 120` | Prueba end-to-end dataset→3 modelos→Soft Voting. | Solo `workspace/output/normal_tests/<run>/` y logs; no modifica dataset preparado. | `NORMAL_TEST_COMPLETED` y `predictions.csv`, o fallo explícito del modelo. |
-| `docker compose exec fastapi python -m experiments.run ...` | Fase de configuración experimental; ejecuta modelos una vez y evalúa 80 combinaciones CPU. | `workspace/output/experiments/`; no modifica dataset. | ranking + best configuration. |
+| `docker compose exec fastapi python -m tests_flow.normal --datasets cbis_ddsm --samples 10 --sampling stratified --seed 42 --max-runtime-minutes 30` | Prueba end-to-end con sampling proporcional reproducible. En el CBIS-DDSM preparado actual (72 benignos/33 malignos), 10 seleccionan objetivo 7/3. | Solo `workspace/output/normal_tests/<run>/` y logs; no modifica dataset preparado. | `selected_studies.csv`, `run_summary.json`, `NORMAL_TEST_COMPLETED` y predicciones/métricas. |
+| `docker compose exec fastapi python -m tests_flow.normal --datasets cbis_ddsm --samples 10 --sampling balanced --seed 42 --max-runtime-minutes 30` | Prueba de integración balanceada que fuerza cuotas iguales por clase cuando hay disponibilidad; útil para ejercitar TN/FP/FN/TP. | Solo outputs/logs de la nueva corrida; no limpia ni reconvierte datasets. | Para 10 estudios, objetivo 5 benignos/5 malignos y métricas calculables si todos completan. |
+| `docker compose exec fastapi python -m experiments.score_analysis --input /workspace/output/normal_tests/<RUN>/raw_model_predictions.csv` | Analiza scores ya calculados sin ejecutar GMIC/NYU/GLAM otra vez: ROC-AUC por modelo, distribuciones por clase, correlaciones, puntos ROC y preview de thresholds adaptativos. | Solo crea `workspace/output/analyses/score-analysis-.../`; no modifica datasets, modelos ni el run de origen. | `score_summary.json`, `model_metrics.csv`, `candidate_thresholds.csv`, `score_analysis_report.md`. |
+| `./scripts/analyze-scores.sh /workspace/output/normal_tests/<RUN>/raw_model_predictions.csv` | Wrapper host del análisis anterior. | Mismos outputs CPU-only; no usa GPU. | Ruta del directorio de análisis. |
+| `docker compose exec fastapi python -m experiments.run --datasets cbis_ddsm --configuration-ratio 0.30 --seed 42` | Fase de configuración experimental. Divide por paciente antes de inferir, ejecuta modelos solo sobre Configuration Set y evalúa 16 pesos × 5 thresholds adaptativos (=80) en CPU. El Final Test Set queda reservado sin scores. | `workspace/output/experiments/`; no modifica dataset. | `experiment_plan.json`, manifests config/final, score analysis, 80 configuraciones, ranking y best configuration. |
 | `docker compose exec fastapi python -m experiments.freeze --experiment <ID>` | Congela pesos/threshold seleccionados. | Crea `frozen_configuration.yaml`; no se sobreescribe con contenido distinto. | Configuración frozen. |
 | `docker compose exec fastapi python -m experiments.final_evaluation --experiment <ID>` | Evalúa el Final Test Set reservado. | Resultados finales en el experimento; no reoptimiza. | Métricas selected vs baseline. |
 | `docker run --rm --gpus all nvidia/cudagl:10.1-devel-ubuntu18.04 nvidia-smi` | Diagnóstico de exposición GPU a Docker/WSL. | Nada persistente. | RTX visible dentro del contenedor. |
@@ -546,12 +552,35 @@ Son reglas determinísticas; no hay calibración aprendida.
 
 ## 7. Prueba normal
 
-Baseline:
+La prueba normal usa por defecto `--sampling sequential` para compatibilidad con versiones anteriores. v0.21 añade selección reproducible consciente de clase:
+
+- `sequential`: primeros N estudios del manifest (legacy).
+- `random`: N estudios aleatorios reproducibles mediante `--seed`.
+- `stratified`: mantiene aproximadamente la proporción de clases del universo disponible. En los 105 estudios CBIS-DDSM actuales (72 benignos/33 malignos), `--samples 10` produce objetivo **7 benignos / 3 malignos**.
+- `balanced`: cuotas iguales por clase; `--samples 10` produce **5 benignos / 5 malignos** si existen suficientes casos.
+
+Toda corrida escribe `selected_studies.csv`, por lo que los IDs exactos usados quedan auditables. `configuration_used.yaml` registra sampling/seed/distribuciones y `run_summary.json` registra estudios/imágenes procesados y tiempo total.
+
+Prueba representativa estratificada:
 
 ```bash
 docker compose exec fastapi python -m tests_flow.normal \
   --datasets cbis_ddsm \
-  --samples 50
+  --samples 10 \
+  --sampling stratified \
+  --seed 42 \
+  --max-runtime-minutes 30
+```
+
+Prueba de integración balanceada (recomendada para comprobar ambas clases antes de aumentar el volumen):
+
+```bash
+docker compose exec fastapi python -m tests_flow.normal \
+  --datasets cbis_ddsm \
+  --samples 10 \
+  --sampling balanced \
+  --seed 42 \
+  --max-runtime-minutes 30
 ```
 
 Pesos manuales:
@@ -559,7 +588,9 @@ Pesos manuales:
 ```bash
 docker compose exec fastapi python -m tests_flow.normal \
   --datasets cbis_ddsm \
-  --samples 50 \
+  --samples 10 \
+  --sampling stratified \
+  --seed 42 \
   --weights 0.50 0.30 0.20 \
   --threshold 0.45
 ```
@@ -569,53 +600,95 @@ Configuración congelada de un experimento anterior:
 ```bash
 docker compose exec fastapi python -m tests_flow.normal \
   --datasets cbis_ddsm \
-  --samples 50 \
+  --samples 10 \
+  --sampling stratified \
+  --seed 42 \
   --config /workspace/output/experiments/<ID>/frozen_configuration.yaml
 ```
 
-Prueba piloto con máximo aproximado de 120 minutos:
+El límite `--max-runtime-minutes` se evalúa **entre chunks completos**; no mata una inferencia ya iniciada. Si se alcanza después de al menos un chunk, la corrida queda `PARTIAL_TIME_LIMIT` y conserva evidencia de los chunks completados. No modifica ni limpia el dataset preparado.
 
-```bash
-docker compose exec fastapi python -m tests_flow.normal \
-  --datasets cbis_ddsm \
-  --samples 500 \
-  --max-runtime-minutes 120
-```
-
-El límite de tiempo solo se evalúa entre lotes completos. No mata una inferencia en curso. Si se alcanza, se guardan los resultados terminados y el estado queda `PARTIAL_TIME_LIMIT`.
+`resource_metrics.csv` usa desde v0.21 el campo `monitoring_samples`: es el número de lecturas periódicas del monitor de CPU/GPU, **no** el número de estudios o imágenes.
 
 ## 8. Prueba experimental
+
+v0.22 mantiene la separación metodológica **Configuration Set → freeze → Final Test Set**. No se deben generar scores del Final Test Set antes de congelar pesos/threshold. La política es inferir cada estudio como máximo una vez dentro del experimento: Configuration Set durante `experiments.run`; Final Test Set recién durante `final_evaluation`, con reutilización del cache si se repite ese comando.
+
+### 8.1 Análisis CPU de scores ya existentes
+
+Antes de abrir un experimento formal puede analizar cualquier `raw_model_predictions.csv` ya generado:
+
+```bash
+docker compose exec fastapi python -m experiments.score_analysis \
+  --input /workspace/output/normal_tests/<RUN>/raw_model_predictions.csv
+```
+
+Este comando **no ejecuta modelos ni usa GPU**. No modifica el run de origen. Escribe bajo `workspace/output/analyses/`:
+
+- `score_summary.json`: rango observado, AUC baseline, warnings y research guards.
+- `model_metrics.csv`: ROC-AUC y estadísticos benign/malignant por GMIC, NYU, GLAM y ensemble baseline.
+- `score_distribution.csv`: min/quantiles/media/std por clase.
+- `model_correlations.csv`: Pearson/Spearman entre scores.
+- `roc_points.csv`: puntos de curva ROC cuando hay ambas clases.
+- `candidate_thresholds.csv`: 16×5 thresholds que resultarían de la estrategia adaptativa.
+- `score_analysis_report.md`.
+
+v0.22 **no invierte scores con AUC < 0.5, no calibra y no entrena**; solo registra la evidencia.
+
+### 8.2 Thresholds adaptativos del Configuration Set
+
+La grilla fija histórica `0.40,0.45,0.50,0.55,0.60` queda documentada como legacy pero no se usa en el experimento v0.22. Para cada una de las 16 combinaciones de pesos se calculan cinco candidatos a partir de sus scores en el Configuration Set:
+
+```text
+T01 = quantile 10%
+T02 = quantile 30%
+T03 = quantile 50%
+T04 = quantile 70%
+T05 = quantile 90%
+```
+
+La derivación usa **solo scores**, nunca `ground_truth`. Después de fijar los cinco valores se usan las etiquetas del Configuration Set para calcular TN/FP/FN/TP, Sensitivity y ROC-AUC. Por tanto siguen existiendo exactamente **16 × 5 = 80 configuraciones** y el Final Test Set no participa en la optimización.
+
+### 8.3 Abrir el experimento formal completo
 
 ```bash
 docker compose exec fastapi python -m experiments.run \
   --datasets cbis_ddsm \
-  --samples 200 \
   --configuration-ratio 0.30 \
   --seed 42
 ```
 
-El flujo:
+Sin `--samples`, se parte de los 105 estudios preparados. Primero se divide por paciente y de forma estratificada. Aproximadamente 30% queda como Configuration Set y 70% como Final Test Set reservado. **Solo el Configuration Set se infiere en esta fase.**
 
-1. separa por paciente `Configuration Set` y `Final Test Set`;
-2. ejecuta GMIC + NYU + GLAM **una sola vez por estudio**;
-3. guarda los tres scores;
-4. evalúa 16 configuraciones de pesos × 5 thresholds = 80 combinaciones sobre el Configuration Set;
-5. selecciona una configuración usando ROC-AUC y luego Sensitivity/FN/FP;
-6. **no ejecuta todavía el Final Test Set**.
+Archivos principales:
 
-Congelar la configuración seleccionada:
+```text
+experiment_plan.json
+configuration_set_manifest.csv
+final_test_manifest.csv
+configuration_set_predictions.csv
+configuration_score_analysis/
+all_configurations.csv
+ranking.csv
+best_configuration.json
+configuration_report.md
+```
+
+### 8.4 Congelar configuración
 
 ```bash
 docker compose exec fastapi python -m experiments.freeze --experiment <ID>
 ```
 
-Solo después del freeze, ejecutar la evaluación final:
+Crea `frozen_configuration.yaml`. Si ya existe con contenido diferente, el proceso falla: no se permite reoptimizar silenciosamente la configuración.
+
+### 8.5 Evaluar el Final Test Set reservado
 
 ```bash
 docker compose exec fastapi python -m experiments.final_evaluation --experiment <ID>
 ```
 
-La evaluación final ejecuta los tres modelos una sola vez sobre cada estudio reservado y compara la configuración congelada contra el baseline, sin reoptimizar.
+Solo después del freeze se ejecutan GMIC+NYU+GLAM sobre el Final Test Set. Si `final_inference/raw_model_predictions.csv` ya existe y es compatible, v0.22 lo reutiliza en vez de volver a ejecutar los modelos. La evaluación final no cambia pesos ni threshold.
 
 ## 9. Configuraciones agregadas durante la implementación
 
@@ -961,3 +1034,27 @@ La prueba CBIS-DDSM de v0.17 confirmó que GMIC ya supera el `forward()` que fal
 El batch canónico del prototipo, alineado con el metarepository, conserva `left_malignant` y `right_malignant`. v0.18 no inventa una etiqueta benigna complementaria: el runtime GMIC registra `NaN` únicamente para `benign_label` cuando esa verdad de referencia independiente no está disponible. Los `benign_pred` y `malignant_pred` del modelo no cambian.
 
 Para migrar desde v0.17 no se repite la preparación CBIS-DDSM. Después de reconstruir los servicios de aplicación, ejecute `./scripts/validate-models.sh gmic`; el cambio de `build_revision` reconstruye solo GMIC, hace GPU probe y smoke test.
+
+## v0.19 — corrección del estado de ejecución real
+
+La prueba de 5 estudios CBIS-DDSM en v0.18 demostró que GMIC completaba inferencia, escribía su CSV y generaba 20 artefactos XAI, pero el pipeline lo marcaba como fallido porque la respuesta `/run` terminaba con `status=READY`. La causa era una colisión de metadata: `READY` describe que la imagen del modelo está disponible, mientras que la operación real debe devolver `SUCCESS` después de verificar el CSV.
+
+v0.19 corrige únicamente esa precedencia de estado. No cambia GMIC/NYU/GLAM, checkpoints, pesos, build revisions, datasets ni Soft Voting. Por ello, al migrar desde v0.18 **no es necesario reconstruir modelos ni repetir `download`, `inspect` o `prepare`**; basta reconstruir los servicios de aplicación y repetir el normal test.
+
+
+## v0.20 — GLAM dataset contract, isolation and stronger integration guards
+
+La prueba real de v0.19 confirmó que GMIC y NYU completan los 5 estudios CBIS-DDSM; GLAM falló únicamente al copiar una etiqueta opcional `left_benign` después del forward. v0.20 aplica a GLAM la misma política científica ya validada para GMIC: la etiqueta maligna continúa siendo obligatoria y una etiqueta benigna independiente ausente se representa como `NaN`, nunca como `1-malignant`. `GLAM build_revision=2` fuerza una única reconstrucción del runtime GLAM.
+
+Antes de empaquetar se revisó además el flujo completo y se corrigieron dos riesgos de integración que todavía no habían producido un traceback: (1) cada modelo usa ahora un directorio `preprocessed/<model>/` separado, evitando que XAI de GMIC sea reportado como XAI de NYU/GLAM; (2) GMIC/GLAM se relacionan con el `study_id` original mediante un `study_key` sanitizado explícito y validado, en lugar de asumir que el orden de `groupby` coincide con el manifest. Se detectan colisiones de IDs sanitizados antes de inferencia. En ejecución por chunks, XAI y métricas de recursos se agregan también al directorio raíz de la corrida.
+
+El Model Runner escribe ahora a stdout eventos operativos de alto valor (`MODEL_RUN_STARTED`, lock GPU, contenedor temporal, comando de modelo, éxito/fallo y métricas), además de conservar `workspace/logs/model_runner.jsonl`. Los healthchecks repetitivos continúan suprimidos por transición de estado.
+
+
+## v0.21 — sampling reproducible, métricas explicables y conteos inequívocos
+
+v0.20 completó por primera vez 5 estudios CBIS-DDSM reales con GMIC + NYU + GLAM + Soft Voting en aproximadamente 3m52s. Como el comportamiento legacy tomaba los primeros N registros, los cinco casos fueron benignos y Sensitivity/ROC-AUC quedaron correctamente no disponibles. v0.21 incorpora sampling reproducible (`stratified` y `balanced`), conserva los `study_id` seleccionados, explica métricas `null`, registra `processed_studies`/`processed_images`/`overall_elapsed_seconds` y renombra las observaciones del monitor de recursos a `monitoring_samples`. No cambia modelos, pesos, checkpoints, datasets ni Soft Voting.
+
+## v0.22 — análisis de scores, thresholds adaptativos y aislamiento del Final Test Set
+
+La corrida real v0.21 de 10 estudios balanceados completó 40 mamografías en ~7m22s, pero el baseline threshold 0.50 dejó 5/5 malignos como FN y produjo ROC-AUC 0.36. v0.22 no cambia ningún modelo. Añade análisis CPU de scores cacheados, reporta AUC por modelo/correlaciones/distribuciones y reemplaza la grilla experimental fija 0.40-0.60 por cinco quantiles label-independent del Configuration Set para cada peso. El Final Test Set permanece sin inferencia hasta freeze y su cache se reutiliza si `final_evaluation` se ejecuta nuevamente.

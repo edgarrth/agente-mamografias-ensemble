@@ -23,7 +23,22 @@ weights:
   W15: [0.20, 0.60, 0.20]
   W16: [0.20, 0.20, 0.60]
 
-thresholds:
+# v0.22 replaces the obsolete fixed 0.40-0.60 threshold grid. The five
+# candidates are derived separately for each weight combination from score
+# quantiles in the Configuration Set. Ground-truth labels are NOT used to
+# construct these candidate values; labels are used only to evaluate them.
+threshold_strategy:
+  mode: score_quantiles
+  derive_per_weight: true
+  ground_truth_used_for_derivation: false
+  quantiles:
+    T01: 0.10
+    T02: 0.30
+    T03: 0.50
+    T04: 0.70
+    T05: 0.90
+
+legacy_thresholds_v021_not_used:
   T01: 0.40
   T02: 0.45
   T03: 0.50

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from pathlib import Path
@@ -8,6 +8,7 @@ import datetime
 import fcntl
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -28,8 +29,26 @@ GPU = os.getenv("GPU_NUMBER", "0")
 BOOTSTRAP_MODE = os.getenv("MODEL_BOOTSTRAP_MODE", "lazy").lower()
 RESOURCE_SAMPLE_SECONDS = float(os.getenv("RESOURCE_SAMPLE_SECONDS", "2"))
 
-APP_VERSION = "0.18.0"
-app = FastAPI(title="Mammography Model Runner", version=APP_VERSION)
+APP_VERSION = "0.22.0"
+
+CONSOLE_LOG = logging.getLogger("mammography-model-runner")
+if not CONSOLE_LOG.handlers:
+    _console_handler = logging.StreamHandler()
+    _console_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    CONSOLE_LOG.addHandler(_console_handler)
+CONSOLE_LOG.setLevel(os.getenv("LOG_LEVEL", "INFO"))
+
+_CONSOLE_EVENT_EXACT = {
+    "MODEL_RUNNER_READY", "GPU_LOCK_WAITING", "GPU_LOCK_ACQUIRED", "GPU_LOCK_RELEASED",
+    "MODEL_RUN_STARTED", "MODEL_CHILD_CONTAINER_STARTED", "MODEL_COMMAND_STARTED",
+    "MODEL_COMMAND_COMPLETED", "MODEL_RUN_SUCCESS", "MODEL_RUN_FAILED",
+    "MODEL_IMAGE_BUILD_STARTED", "MODEL_IMAGE_BUILD_COMPLETED",
+    "GPU_MODEL_IMAGE_BUILD_STARTED", "GPU_MODEL_IMAGE_BUILD_COMPLETED",
+    "GPU_MODEL_PROBE_FAILED", "MODEL_SMOKE_FAILED",
+}
+
+def _console_event(event: str) -> bool:
+    return event in _CONSOLE_EVENT_EXACT or event.endswith("_FAILED")
 
 
 def cfg() -> dict:
@@ -86,6 +105,10 @@ def log(event: str, model: str | None = None, **data):
     }
     with (p / "model_runner.jsonl").open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+    if _console_event(event):
+        level=logging.ERROR if event.endswith("_FAILED") else logging.INFO
+        compact={k:v for k,v in rec.items() if k not in {"timestamp","component","stdout","stderr","cmd"}}
+        CONSOLE_LOG.log(level, "%s %s", event, compact)
 
 
 @contextmanager
@@ -606,7 +629,7 @@ def _parse_mem_mib(text: str) -> float | None:
     return None
 
 
-def sample_container(container: str, device: str, stop: threading.Event, samples: list[dict]):
+def sample_container(container: str, device: str, stop: threading.Event, metric_samples: list[dict]):
     while not stop.is_set():
         rec: dict = {}
         cp = subprocess.run(
@@ -640,14 +663,14 @@ def sample_container(container: str, device: str, stop: threading.Event, samples
                 except Exception:
                     pass
         if rec:
-            samples.append(rec)
+            metric_samples.append(rec)
         stop.wait(RESOURCE_SAMPLE_SECONDS)
 
 
 def exec_with_metrics(container: str, cmd: list[str], device: str):
-    samples: list[dict] = []
+    metric_samples: list[dict] = []
     stop = threading.Event()
-    t = threading.Thread(target=sample_container, args=(container, device, stop, samples), daemon=True)
+    t = threading.Thread(target=sample_container, args=(container, device, stop, metric_samples), daemon=True)
     t.start()
     started = time.monotonic()
     cp = subprocess.run(cmd, text=True, capture_output=True, timeout=60 * 60 * 24)
@@ -660,16 +683,16 @@ def exec_with_metrics(container: str, cmd: list[str], device: str):
         )
 
     def avg(key: str):
-        vals = [x[key] for x in samples if x.get(key) is not None]
+        vals = [x[key] for x in metric_samples if x.get(key) is not None]
         return sum(vals) / len(vals) if vals else None
 
     def mx(key: str):
-        vals = [x[key] for x in samples if x.get(key) is not None]
+        vals = [x[key] for x in metric_samples if x.get(key) is not None]
         return max(vals) if vals else None
 
     return cp.stdout.strip(), {
         "elapsed_seconds": elapsed,
-        "samples": len(samples),
+        "monitoring_samples": len(metric_samples),
         "avg_cpu_percent": avg("cpu_percent"),
         "max_memory_mib": mx("memory_mib"),
         "avg_gpu_util_percent": avg("gpu_util_percent"),
@@ -698,10 +721,32 @@ def _run_under_optional_gpu_lock(model: str, req: RunRequest):
     device = (req.device or configured_device_for(model)).lower()
     if device == "gpu":
         # One shared lock serializes all model GPU inference on the single research GPU.
+        log("GPU_LOCK_WAITING", model=model, run_id=req.run_id, gpu=GPU)
         with shared_lock("gpu_inference"):
             log("GPU_LOCK_ACQUIRED", model=model, run_id=req.run_id, gpu=GPU)
-            return _run_real_unlocked(model, req, device)
+            try:
+                return _run_real_unlocked(model, req, device)
+            finally:
+                log("GPU_LOCK_RELEASED", model=model, run_id=req.run_id, gpu=GPU)
     return _run_real_unlocked(model, req, device)
+
+
+def _run_success_payload(info: dict, output_file: str, xai: list[str], resource_metrics: dict, stdout: str) -> dict:
+    """Return the contract for a completed inference run.
+
+    ensure_image/ensure_gpu_image metadata intentionally uses status=READY to
+    describe image readiness.  A completed /run operation has a different
+    status contract: SUCCESS.  Merge model metadata first and operation status
+    last so READY cannot overwrite SUCCESS.
+    """
+    return {
+        **info,
+        "status": "SUCCESS",
+        "output_file": output_file,
+        "xai_artifacts": xai,
+        "resource_metrics": resource_metrics,
+        "stdout_tail": stdout[-2000:],
+    }
 
 
 def _run_real_unlocked(model: str, req: RunRequest, device: str):
@@ -748,29 +793,45 @@ def _run_real_unlocked(model: str, req: RunRequest, device: str):
         args += ["--gpus", f"device={GPU}"]
     args += [selected_image, "bash", "-lc", "trap : TERM INT; sleep infinity & wait"]
 
+    log(
+        "MODEL_RUN_STARTED", model=model, run_id=req.run_id, device=device, image=selected_image,
+        image_dir=str(image_dir), output_file=str(out), preprocessed_dir=str(pre),
+        input_images=len(list(image_dir.glob("*.png"))),
+    )
     try:
         sh(args, timeout=60, model=model)
+        log("MODEL_CHILD_CONTAINER_STARTED", model=model, run_id=req.run_id, container=child_container, image=selected_image)
         sh(["docker", "cp", f"{pred}/.", f"{child_container}:{target}"], model=model)
         cmd = [
             "docker", "exec", "-w", target, child_container, "bash", "predict.sh",
             str(data), str(image_dir), str(out), safe, device, str(pre),
         ]
+        log("MODEL_COMMAND_STARTED", model=model, run_id=req.run_id, container=child_container, device=device)
         stdout, resource_metrics = exec_with_metrics(child_container, cmd, device)
+        log(
+            "MODEL_COMMAND_COMPLETED", model=model, run_id=req.run_id,
+            elapsed_seconds=resource_metrics.get("elapsed_seconds"),
+            avg_gpu_util_percent=resource_metrics.get("avg_gpu_util_percent"),
+            max_gpu_memory_mib=resource_metrics.get("max_gpu_memory_mib"),
+        )
         if not out.exists() or out.stat().st_size == 0:
             raise RuntimeError(f"Expected prediction CSV was not produced: {out}")
         xai: list[str] = []
         for candidate in pre.rglob("visualization"):
             if candidate.is_dir():
                 xai += [str(p) for p in candidate.rglob("*") if p.is_file()]
-        log("MODEL_RUN_SUCCESS", model=model, run_id=req.run_id, output=str(out), xai_count=len(xai))
-        return {
-            "status": "SUCCESS",
-            **info,
-            "output_file": str(out),
-            "xai_artifacts": xai,
-            "resource_metrics": resource_metrics,
-            "stdout_tail": stdout[-2000:],
-        }
+        log(
+            "MODEL_RUN_SUCCESS", model=model, run_id=req.run_id, output=str(out), xai_count=len(xai),
+            elapsed_seconds=resource_metrics.get("elapsed_seconds"),
+            max_gpu_memory_mib=resource_metrics.get("max_gpu_memory_mib"),
+        )
+        return _run_success_payload(
+            info=info,
+            output_file=str(out),
+            xai=xai,
+            resource_metrics=resource_metrics,
+            stdout=stdout,
+        )
     finally:
         subprocess.run(["docker", "rm", "-f", child_container], capture_output=True, text=True)
 
@@ -795,8 +856,8 @@ def model_info(model: str) -> dict:
     }
 
 
-@app.on_event("startup")
-def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     install_healthcheck_access_filter()
     diagnostics = docker_diagnostics()
     log(
@@ -818,7 +879,9 @@ def startup():
             except Exception as exc:
                 log("EAGER_MODEL_BUILD_FAILED", model=model, error=str(exc))
                 raise
+    yield
 
+app = FastAPI(title="Mammography Model Runner", version=APP_VERSION, lifespan=lifespan)
 
 @app.get("/doctor")
 def doctor():

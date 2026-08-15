@@ -8,7 +8,7 @@ Usage:
   ./scripts/validate-models.sh gmic nyu glam
   ./scripts/validate-models.sh --force-rebuild gmic nyu
 
-Runs the v0.18 integrated GPU validation inside the FastAPI container:
+Runs the current integrated GPU validation inside the FastAPI container:
   ensure current GPU image revision -> CUDA probe -> upstream smoke test.
 EOF
 }

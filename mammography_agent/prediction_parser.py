@@ -11,7 +11,7 @@ def parse_image_level(csv_path: Path, model: str) -> pd.DataFrame:
     if not {"image_index","malignant_pred"}.issubset(df.columns):
         raise ValueError(f"Unexpected {model} output columns: {list(df.columns)}")
     df["study_key"]=df.image_index.map(_study_from_image_index)
-    out=df.groupby("study_key",as_index=False).malignant_pred.max()
+    out=df.groupby("study_key",as_index=False,sort=False).malignant_pred.max()
     out.columns=["study_key",f"{model}_score"]
     return out
 

@@ -333,7 +333,7 @@ Los parches de compatibilidad GPU se describen ahora dentro del bloque `gpu_comp
 
 ## ADD-058 — container_version_exposure — **active**
 
-**Valor:** `VERSION` existe en `/app/VERSION` y `/runner/VERSION`; `/health`/`/doctor` exponen la versión actual (`0.18.0` en este paquete).
+**Valor:** `VERSION` existe en `/app/VERSION` y `/runner/VERSION`; `/health`/`/doctor` exponen la versión actual (`0.22.0` en este paquete).
 
 **Por qué:** permite verificar exactamente qué build está corriendo y elimina versiones hardcodeadas obsoletas.
 
@@ -361,3 +361,90 @@ Los parches de compatibilidad GPU se describen ahora dentro del bloque `gpu_comp
 **Valor:** el runtime GMIC Blackwell acepta `cancer_label` con `left_malignant` y `right_malignant`; si `left_benign`/`right_benign` no existen, solo las columnas `benign_label` del CSV se registran como `NaN`.
 
 **Por qué:** el metarepository define las etiquetas canónicas breast-level mediante presencia de malignidad. El runner standalone de GMIC intentaba leer etiquetas benignas adicionales después del forward, provocando `KeyError` con datasets reales adaptados. No se debe inventar `benign = 1 - malignant`; la ausencia se representa explícitamente como dato no disponible.
+
+## ADD-063 — model_run_operation_status_precedence — **active**
+
+**Valor:** la respuesta de `/models/{model}/run` fusiona primero metadata de imagen/runtime y escribe al final `status=SUCCESS` cuando la inferencia produjo su CSV.
+
+**Por qué:** `ensure_image`/`ensure_gpu_image` usan `status=READY` para expresar disponibilidad del runtime. Esa clave no debe sobrescribir el estado de la operación `/run`, porque el pipeline necesita distinguir “imagen lista” de “inferencia completada”. La corrección preserva una guarda estricta y evita falsos fallos sin aceptar ejecuciones incompletas.
+
+
+## ADD-064 — glam_metarepository_malignant_only_label_contract — **active**
+
+GLAM preserva `left_malignant/right_malignant` y registra `NaN` solo para metadata benigna independiente ausente. No infiere ni sintetiza ground truth benigno. `build_revision=2`.
+
+## ADD-065 — per_model_preprocessed_isolation — **active**
+
+Cada modelo escribe preprocessing/XAI bajo `model_batch/preprocessed/<model>/`, evitando contaminación cruzada de artefactos.
+
+## ADD-066 — explicit_image_prediction_study_identity — **active**
+
+`study_order.csv` incluye `study_key` sanitizado; GMIC/GLAM se unen al `study_id` original por identidad explícita y validación one-to-one.
+
+## ADD-067 — model_runner_console_lifecycle_logging — **active**
+
+Eventos operativos del Runner se publican a stdout además de JSONL, manteniendo la supresión de `/health` repetitivos.
+
+## ADD-068 — chunk_evidence_aggregation — **active**
+
+La ejecución normal con chunks agrega XAI y métricas de recursos al root de la corrida.
+
+
+## ADD-069 — fastapi_lifespan_startup_hooks — **active**
+
+FastAPI y Model Runner usan `lifespan` para inicialización de startup en lugar de `@app.on_event("startup")`; se elimina el warning deprecado sin alterar las tareas de inicialización.
+
+## ADD-070 — normal_test_reproducible_sampling — **active**
+
+**Valor:** `tests_flow.normal` admite `sequential`, `random`, `stratified` (proporcional a la distribución disponible) y `balanced` (cuotas iguales por clase), con `--seed` determinístico.
+
+**Por qué:** la primera corrida end-to-end exitosa seleccionó los primeros 5 estudios y los cinco fueron benignos. La selección explícita permite probar ambas clases sin modificar el dataset preparado.
+
+## ADD-071 — normal_test_sampling_traceability — **active**
+
+**Valor:** cada corrida escribe `selected_studies.csv` y persiste estrategia, seed y distribuciones de clase disponible/solicitada/real en `configuration_used.yaml` y `run_summary.json`.
+
+**Por qué:** la unidad de evidencia debe poder reproducirse por `study_id`; un simple `--samples N` no basta para trazabilidad académica.
+
+## ADD-072 — resource_monitoring_sample_naming — **active**
+
+**Valor:** `resource_metrics` usa `monitoring_samples` en lugar de `samples`.
+
+**Por qué:** ese contador representa lecturas periódicas de CPU/GPU/memoria tomadas por el monitor, no estudios ni imágenes del dataset.
+
+## ADD-073 — unavailable_metric_reasons — **active**
+
+**Valor:** cuando `sensitivity` o `roc_auc` son `null`, `metrics.json` incluye el motivo matemático explícito.
+
+**Por qué:** una muestra con una sola clase no permite calcular todas las métricas; la ausencia debe quedar explicada y no parecer un fallo silencioso.
+
+## ADD-074 — normal_test_run_summary — **active**
+
+**Valor:** `run_summary.json` registra estudios e imágenes procesadas, sampling, límite de runtime y `overall_elapsed_seconds`.
+
+**Por qué:** separa claramente unidades de dataset, observaciones de monitoreo y tiempo de pared del flujo completo.
+
+
+## ADD-075 — Configuration score analysis
+
+**Valor:** `experiments.score_analysis` analiza scores cacheados sin GPU y genera AUC por modelo, distribución por clase, correlaciones, puntos ROC, thresholds candidatos y research guards.
+
+**Razón:** la corrida real balanceada v0.21 evidenció que la escala observada no era compatible con la grilla absoluta histórica.
+
+## ADD-076 — Adaptive Configuration-Set threshold grid
+
+**Valor:** cinco quantiles (10/30/50/70/90%) por combinación de pesos; exactamente 80 combinaciones; la derivación de threshold no usa labels.
+
+**Razón:** adaptar el rango a la escala de score del Configuration Set sin contaminarlo con el Final Test Set ni hacer calibración/aprendizaje.
+
+## ADD-077 — Final Test Set isolation and cache
+
+**Valor:** Final Test Set no se infiere antes de freeze; una inferencia final existente se reutiliza si su cache es compatible.
+
+**Razón:** preservar aislamiento metodológico y evitar repetir inferencias costosas sobre los mismos estudios.
+
+## ADD-078 — Experimental score evidence
+
+**Valor:** `configuration_score_analysis/` y `final_score_analysis/` quedan dentro del experimento.
+
+**Razón:** las decisiones de peso/threshold y la evaluación final deben ser auditables desde scores brutos y métricas por modelo.

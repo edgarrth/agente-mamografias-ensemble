@@ -192,3 +192,39 @@ v0.2 introduced `gmic-runtime`, `nyu-runtime` and `glam-runtime` as three persis
 - El batch canónico conserva exclusivamente las etiquetas malignas breast-level exigidas por el metarepository; v0.18 no inventa etiquetas benignas.
 - El runner GMIC Blackwell emite `NaN` en `benign_label` cuando esa etiqueta opcional no está disponible, preservando los scores benign/malignant producidos por el modelo.
 - `GMIC build_revision=3`; NYU/GLAM permanecen en revisión 1.
+
+## 2026-08-15 — v0.19: contrato de estado de inferencia Model Runner
+
+- Corrige una colisión de claves en `/models/{model}/run`: la metadata `status=READY` de `ensure_gpu_image()` sobrescribía accidentalmente `status=SUCCESS` después de una inferencia real completada.
+- `READY` queda reservado para disponibilidad de imagen/runtime; `GPU_READY` para probe CUDA; `SUCCESS` para una inferencia que produjo salida.
+- El pipeline conserva la guarda estricta `status == SUCCESS`; no acepta `READY` como éxito de inferencia.
+- La evidencia real de v0.18 mostró que GMIC terminó 5 estudios CBIS-DDSM, produjo `gmic.csv` y 20 XAI antes del falso fallo de orquestación.
+- No cambia modelos, pesos, checkpoints, build revisions, datasets, ground truth, XAI ni Soft Voting.
+
+
+## 2026-08-15 — v0.20: GLAM dataset contract, artifact isolation and run logging
+
+- GLAM Blackwell acepta el contrato malignancy-only sin fabricar etiquetas benignas; `build_revision=2`.
+- Se separa `preprocessed/<model>` para evitar atribución cruzada de XAI.
+- Se elimina el acoplamiento por orden entre outputs image-level y estudios: mapping explícito `study_key` con validación one-to-one.
+- Chunk mode agrega XAI y resource metrics al root de la corrida.
+- Model Runner emite eventos de ciclo de inferencia a stdout; healthchecks repetidos continúan suprimidos.
+- FastAPI/Model Runner migran startup a `lifespan`, eliminando warnings de `on_event` deprecado.
+
+## 2026-08-15 — v0.21: reproducible class-aware normal-test sampling and clearer evidence
+
+- Se añade sampling normal parametrizable y determinístico: `sequential`, `random`, `stratified` proporcional y `balanced`.
+- Cada normal test conserva `selected_studies.csv` y metadata de sampling en configuración/resumen.
+- `samples` de resource monitoring se renombra a `monitoring_samples` para no confundirlo con casos del dataset.
+- Métricas no calculables incluyen motivo explícito.
+- Se añade `run_summary.json` con estudios/imágenes procesados y tiempo end-to-end.
+- No cambia ningún modelo, peso, checkpoint, runtime Blackwell, dataset preparado, ground truth ni fórmula de Soft Voting.
+
+## 2026-08-15 — v0.22: cached score analysis, adaptive thresholds and final-set isolation
+
+- Se agrega análisis CPU de `raw_model_predictions.csv` sin reinferencia GPU: distribución por clase, ROC-AUC por modelo, correlaciones, puntos ROC y advertencias de direccionalidad.
+- La grilla fija 0.40/0.45/0.50/0.55/0.60 deja de utilizarse en el experimento porque quedó fuera de la escala observada en la primera corrida balanceada real.
+- Se mantienen exactamente 80 configuraciones: 16 pesos × 5 thresholds, derivados como quantiles 10/30/50/70/90 de los scores del Configuration Set para cada combinación de pesos.
+- La derivación de thresholds es independiente de `ground_truth`; ninguna inversión de score, calibración, entrenamiento o ajuste de modelo se realiza automáticamente.
+- El Final Test Set no se infiere antes de congelar configuración. La inferencia final queda cacheada y se reutiliza en reejecuciones del mismo experimento.
+- No cambian modelos, pesos preentrenados, runtimes Blackwell, dataset preparado ni regla de Soft Voting.

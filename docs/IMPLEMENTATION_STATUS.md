@@ -1,4 +1,4 @@
-# Implementation status — v0.16
+# Implementation status — v0.22
 
 ## Validado en workstation objetivo
 
@@ -40,3 +40,20 @@ No se realiza entrenamiento, fine-tuning, cambio de arquitectura, reemplazo de p
 - El fix v0.16 de índices fue confirmado en CBIS-DDSM: el forward ya no falla con `top_k_prop_y`.
 - La ausencia de etiquetas benignas independientes ya no aborta GMIC; se registra como `NaN` solo en metadata de salida.
 - No se modifican datasets preparados ni se requiere repetir `prepare`.
+
+## v0.19
+
+La prueba real CBIS-DDSM posterior a v0.18 confirmó que GMIC ya completa el batch de 5 estudios: genera CSV de predicciones y 20 visualizaciones XAI. El fallo observado era exclusivamente de orquestación: el Model Runner fusionaba metadata de imagen `status=READY` después del estado operativo `SUCCESS`, por lo que el pipeline interpretaba una inferencia terminada como fallida. v0.19 corrige la precedencia del estado sin cambiar ningún runtime de modelo. La siguiente validación obligatoria es repetir el normal test de 5 estudios y comprobar que el flujo avanza a NYU, GLAM y Soft Voting.
+
+
+## v0.20
+
+La corrida real v0.19 confirmó GMIC SUCCESS (~112 s desde start/completed) y NYU SUCCESS (~21 s) en 5 estudios CBIS-DDSM. GLAM falló por `KeyError: left_benign` al copiar metadata de etiquetas, no por el forward. v0.20 corrige ese contrato en GLAM y endurece la trazabilidad del pipeline antes de repetir la prueba: aislamiento de XAI por modelo, mapping explícito de identidad de estudio y evidencia root de chunks.
+
+## v0.21
+
+v0.20 quedó validado end-to-end en la workstation: 5 estudios CBIS-DDSM completaron GMIC, NYU, GLAM, Soft Voting, XAI y reportes en ~3m52s. La selección first-N produjo 5/5 casos benignos. v0.21 no toca modelos ni datasets; añade sampling reproducible (`stratified`/`balanced`), evidencia `selected_studies.csv`, `run_summary.json`, razones explícitas para métricas no calculables y renombra el contador ambiguo de recursos a `monitoring_samples`.
+
+## v0.22
+
+La workstation validó v0.21 con 10 estudios CBIS-DDSM balanceados (5 benignos/5 malignos): los tres modelos, XAI y Soft Voting terminaron correctamente en 441.8 s. El resultado baseline fue TN=5, FP=0, FN=5, TP=0, Sensitivity=0 y ROC-AUC=0.36; los scores observados quedaron muy por debajo del threshold 0.50. v0.22 no modifica modelos: añade análisis reproducible de scores cacheados y reemplaza la grilla experimental absoluta 0.40-0.60 por cinco quantiles label-independent derivados del Configuration Set para cada combinación de pesos. El Final Test Set se mantiene reservado hasta freeze y su inferencia se reutiliza si ya existe.

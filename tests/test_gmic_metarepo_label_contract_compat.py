@@ -17,7 +17,7 @@ def test_gmic_build_revision_is_three_for_label_contract_fix():
     assert g["build_revision"] == 3
     assert any("malignant-only cancer_label" in p for p in g["compatibility_code_patches"])
     assert cfg["models"]["nyu"]["gpu_compatibility"].get("build_revision", 1) == 1
-    assert cfg["models"]["glam"]["gpu_compatibility"].get("build_revision", 1) == 1
+    assert cfg["models"]["glam"]["gpu_compatibility"].get("build_revision", 1) == 2
 
 
 def test_generated_metarepository_batch_does_not_invent_benign_labels():
