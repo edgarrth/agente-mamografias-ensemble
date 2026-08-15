@@ -234,3 +234,51 @@ Se incorpora `mammography-model-nyu:blackwell-cu128` como runtime GPU separado p
 ## ADD-039 — `model_owned_gpu_compatibility_patch_audit`
 
 Los parches de compatibilidad GPU se describen ahora dentro del bloque `gpu_compatibility` de cada modelo. Esto evita que la auditoría genérica del Model Runner atribuya a NYU un parche específico de GMIC y conserva trazabilidad precisa por runtime.
+
+## ADD-042 — cbis_ddsm_official_tcia_metadata_adapter — **active**
+
+**Valor:** ingestión recursiva de los cuatro CSV oficiales de CBIS-DDSM más el árbol DICOM descargado con TCIA/NBIA.
+
+**Por qué:** elimina la construcción manual de `source_manifest.csv`. El adapter deriva paciente, lateralidad, vista y patología desde los metadatos oficiales y resuelve las rutas contra los DICOM descargados.
+
+## ADD-043 — cbis_ddsm_pathology_only_ground_truth — **active**
+
+**Valor:** `MALIGNANT=1`, `BENIGN=0`, `BENIGN_WITHOUT_CALLBACK=0`; patologías desconocidas se rechazan; BI-RADS no se convierte a etiqueta de cáncer.
+
+**Por qué:** la clasificación de cáncer debe usar el ground truth patológico del dataset y no una regla heurística basada en assessment/BI-RADS.
+
+## ADD-044 — cbis_ddsm_recursive_raw_layout — **active**
+
+**Valor:** cualquier jerarquía generada por NBIA es válida debajo de `/workspace/datasets/raw/cbis_ddsm`; los CSV oficiales se descubren recursivamente.
+
+**Por qué:** evita aplanar o renombrar manualmente cientos de GB. El adapter usa coincidencia de sufijos/UID y, cuando hace falta, un índice DICOM de cabeceras cacheado.
+
+## ADD-045 — cbis_ddsm_four_view_ensemble_gate — **active**
+
+**Valor:** el ensemble actual exige `L-CC`, `R-CC`, `L-MLO`, `R-MLO`; estudios incompletos se registran y excluyen, sin duplicar ni sintetizar vistas.
+
+**Por qué:** el flujo exam-level del DMV-CNN/NYU seleccionado requiere las cuatro vistas estándar. Completar vistas artificialmente invalidaría la entrada científica.
+
+## ADD-046 — cbis_ddsm_inspection_artifacts — **active**
+
+**Valor:** catálogos de metadata/vistas, reporte de filas no resueltas, reporte de estudios incompletos, `source_manifest.csv` autogenerado e índice DICOM cacheado.
+
+**Por qué:** permite auditar exactamente cómo se transformó el release oficial antes de convertir imágenes o ejecutar inferencia.
+
+## ADD-047 — validated_three_gpu_env_example — **active**
+
+**Valor:** `.env.example` selecciona GMIC, NYU y GLAM en GPU con `ALLOW_GPU=true`, `GPU_NUMBER=0`; el perfil técnico Blackwell sigue exclusivamente en `config/models.yaml`.
+
+**Por qué:** los tres runtimes ya fueron comprobados en la workstation objetivo y el ejemplo debe reflejar el estado realmente probado.
+
+## ADD-048 — cbis_ddsm_metadata_preflight_guard — **active**
+
+**Valor:** `inspect` y `prepare` devuelven `METADATA_REQUIRED` con archivos faltantes e instrucciones; no construyen el índice DICOM mientras la metadata oficial esté incompleta.
+
+**Por qué:** evita tracebacks y trabajo costoso inútil cuando NBIA ha descargado imágenes pero aún faltan los CSV separados de TCIA.
+
+## ADD-049 — cbis_ddsm_metadata_filename_aliases — **active**
+
+**Valor:** se reconocen los nombres canónicos y aliases `Mass/Calc-Training/Test-Description.csv`.
+
+**Por qué:** desacopla el adapter del nombre de descarga sin modificar contenido, etiquetas ni procedencia de la metadata.

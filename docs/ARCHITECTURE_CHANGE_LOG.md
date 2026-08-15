@@ -135,3 +135,24 @@ v0.2 introduced `gmic-runtime`, `nyu-runtime` and `glam-runtime` as three persis
 - Se moderniza únicamente el runtime a Python 3.10, PyTorch 2.7.1, TorchVision 0.22.1 y CUDA 12.8.
 - Los parches declarados cubren API cuDNN, backend gráfico headless, colocación de tensores y preservación de semánticas históricas de índice/sampling.
 - GLAM permanece en CPU por defecto hasta completar `ensure_gpu`, `gpu_probe` y smoke test real en la workstation.
+
+
+## 2026-08-15 — v0.13: adapter oficial TCIA para CBIS-DDSM
+
+- Reemplaza el `source_manifest.csv` manual de CBIS-DDSM por un adapter dataset-specific.
+- Descubre recursivamente el árbol DICOM de NBIA y los cuatro CSV oficiales de clasificación.
+- Usa exclusivamente `pathology` como ground truth de malignidad; BI-RADS/assessment no se convierte a etiqueta.
+- Resuelve imágenes por sufijo de ruta/UID y usa un índice cacheado de cabeceras DICOM como fallback.
+- Genera automáticamente `source_manifest.csv`, catálogo de metadata, catálogo de vistas y reportes de filas/estudios rechazados.
+- Introduce una compuerta explícita de cuatro vistas para el ensemble actual: L-CC, R-CC, L-MLO y R-MLO. No duplica ni sintetiza vistas faltantes.
+- Agrega `python -m dataset_pipeline.inspect --datasets cbis_ddsm` y `POST /datasets/inspect`.
+- La escritura PNG de 16 bits ahora entrega filas al encoder de forma incremental para evitar materializar toda la mamografía como listas Python; no cambia los valores de píxel.
+- No cambia GMIC, DMV-CNN/NYU, GLAM, checkpoints, pesos, perfiles Blackwell ni fórmula de soft voting.
+
+## 2026-08-15 — v0.14: guardas de metadata CBIS-DDSM y configuración validada
+
+- `.env.example` pasa a representar la configuración de tres modelos en GPU que ya superó `gpu_probe` y smoke tests en la RTX 5060 Ti.
+- El `inspect` de CBIS-DDSM retorna `METADATA_REQUIRED` de forma estructurada si faltan tablas de clasificación; no inicia el índice DICOM ni produce traceback.
+- `prepare` conserva la misma guarda y no intenta convertir imágenes sin metadata oficial.
+- Se aceptan aliases de nombres `Mass/Calc-Training/Test-Description.csv` sin alterar el contenido de las tablas ni la fuente de ground truth.
+- No se modifica ningún modelo, peso, checkpoint, arquitectura ni regla de ensemble.

@@ -74,17 +74,18 @@ Si se habilita GPU, el Model Runner aplica un lock compartido en `/workspace/run
 
 ### RTX 50 / Blackwell
 
-Las imágenes/entornos oficiales de estos modelos usan versiones antiguas de CUDA/PyTorch. La selección de dispositivo es una decisión de despliegue **por modelo**, mientras que el perfil técnico GPU pertenece a `config/models.yaml`. El prototipo inicia de forma conservadora con:
+Las imágenes/entornos oficiales de estos modelos usan versiones antiguas de CUDA/PyTorch. La selección de dispositivo es una decisión de despliegue **por modelo**, mientras que el perfil técnico GPU pertenece a `config/models.yaml`. En v0.14, `.env.example` refleja la configuración que ya fue validada en la workstation objetivo RTX 5060 Ti:
 
 ```env
 DEFAULT_MODEL_DEVICE=cpu
-GMIC_DEVICE=cpu
-NYU_DEVICE=cpu
-GLAM_DEVICE=cpu
-ALLOW_GPU=false
+GMIC_DEVICE=gpu
+NYU_DEVICE=gpu
+GLAM_DEVICE=gpu
+ALLOW_GPU=true
+GPU_NUMBER=0
 ```
 
-Un modelo solo puede pasar a GPU cuando tiene un `gpu_compatibility.profile` propio en `config/models.yaml` y ese runtime ha pasado `gpu_probe`. No existe un `GPU_RUNTIME_PROFILE` global y la imagen legacy `:research` nunca se selecciona para GPU.
+Cada modelo posee su propio `gpu_compatibility.profile` en `config/models.yaml` y ya pasó `gpu_probe` y smoke test completo en esa workstation. No existe un `GPU_RUNTIME_PROFILE` global y la imagen legacy `:research` nunca se selecciona para GPU. En hardware distinto, vuelva temporalmente los `*_DEVICE` a `cpu` hasta validar el perfil correspondiente.
 
 ## 2. Inicio rápido
 
@@ -369,31 +370,83 @@ docker compose exec fastapi python -m dataset_pipeline.download --datasets all
 
 ## 5. Preparación de datasets
 
-Para mantener el prototipo simple y auditable, cada adapter acepta un `source_manifest.csv` dentro de la carpeta raw del dataset. Este manifiesto vincula el ground truth autorizado con las cuatro vistas. No se infieren etiquetas a partir de BI-RADS.
+### CBIS-DDSM — adapter oficial TCIA (v0.13)
 
-Columnas mínimas:
-
-```text
-study_id,patient_id,ground_truth,l_cc,r_cc,l_mlo,r_mlo
-```
-
-Opcionales:
+CBIS-DDSM ya **no requiere que el investigador construya manualmente `source_manifest.csv`**. El adapter descubre recursivamente el árbol DICOM descargado con NBIA Data Retriever y los cuatro CSV oficiales:
 
 ```text
-left_ground_truth,right_ground_truth,horizontal_flip
+mass_case_description_train_set.csv
+mass_case_description_test_set.csv
+calc_case_description_train_set.csv
+calc_case_description_test_set.csv
 ```
 
-Las rutas pueden apuntar a DICOM o PNG dentro de `/workspace`. La preparación convierte DICOM a PNG de 16 bits y genera el manifiesto canónico.
+Deje todo bajo el raw directory del workspace. No es necesario aplanar ni renombrar la estructura que genere NBIA:
+
+```text
+workspace/datasets/raw/cbis_ddsm/
+├── CBIS-DDSM/                 # nombre/jerarquía de NBIA puede variar
+│   └── ... DICOM ...
+└── metadata/                  # recomendado; también puede estar en otro subdirectorio
+    ├── mass_case_description_train_set.csv
+    ├── mass_case_description_test_set.csv
+    ├── calc_case_description_train_set.csv
+    └── calc_case_description_test_set.csv
+```
+
+Antes de convertir imágenes, inspeccione el release descargado:
+
+```bash
+docker compose exec fastapi python -m dataset_pipeline.inspect --datasets cbis_ddsm
+```
+
+La inspección no inventa etiquetas ni vistas. Genera y conserva:
+
+```text
+workspace/datasets/manifests/cbis_ddsm_metadata_rows.csv
+workspace/datasets/manifests/cbis_ddsm_view_catalog.csv
+workspace/datasets/rejected/cbis_ddsm_unresolved_metadata_rows.csv
+workspace/datasets/rejected/cbis_ddsm_incomplete_studies.csv
+workspace/datasets/raw/cbis_ddsm/source_manifest.csv
+workspace/runtime/dataset_cache/cbis_ddsm_dicom_index.csv
+```
+
+Ground truth se obtiene **exclusivamente** de la columna oficial `pathology`:
+
+```text
+MALIGNANT                -> 1
+BENIGN                   -> 0
+BENIGN_WITHOUT_CALLBACK  -> 0
+```
+
+BI-RADS/`assessment` no se convierte a cáncer/no-cáncer. Valores de patología desconocidos se reportan como no resueltos.
+
+El ensemble actual incluye el clasificador exam-level DMV-CNN/NYU, por lo que el manifiesto canónico admite únicamente estudios con las cuatro vistas estándar:
+
+```text
+L-CC, R-CC, L-MLO, R-MLO
+```
+
+Si una vista falta, el estudio queda en `cbis_ddsm_incomplete_studies.csv`; v0.13 **no duplica ni sintetiza** una vista faltante. El comando `inspect` informa `complete_four_view_studies` y `ensemble_compatible` antes de realizar la conversión costosa.
+
+Cuando la inspección sea satisfactoria:
 
 ```bash
 docker compose exec fastapi python -m dataset_pipeline.prepare --datasets cbis_ddsm
 ```
 
-```bash
-docker compose exec fastapi python -m dataset_pipeline.prepare --datasets all
+La preparación convierte únicamente los estudios compatibles a PNG de 16 bits y crea:
+
+```text
+workspace/datasets/processed/cbis_ddsm/images/
+workspace/datasets/manifests/cbis_ddsm.csv
 ```
 
-Si falta el `source_manifest.csv`, el adapter falla explícitamente y deja instrucciones; no inventa ground truth.
+Si no existe ningún estudio completo de cuatro vistas, el resultado es `INSUFFICIENT_FOUR_VIEW_STUDIES` y no se fabrica un dataset compatible.
+
+### Otros adapters
+
+VinDr conserva en esta versión el contrato genérico de `source_manifest.csv`. No se modificó su comportamiento en v0.13.
 
 ## 6. Modelos reales: un Runner y tres imágenes aisladas
 
@@ -747,3 +800,33 @@ docker compose exec fastapi python -m model_tools.smoke_test --models glam
 ```
 
 El runtime Blackwell de GLAM conserva el commit/checkpoints/arquitectura upstream. Los cambios declarados son únicamente de compatibilidad de ejecución y preservación de semánticas históricas del framework. Ver `docs/MIGRATION_V0_12.md`.
+
+
+## v0.13 — Adapter real de CBIS-DDSM
+
+v0.13 reemplaza el mapping manual de CBIS-DDSM por un adapter específico del release oficial TCIA. Descubre los cuatro archivos de clasificación, resuelve sus `image file path` contra el árbol DICOM de NBIA por ruta/UID y usa un índice de cabeceras DICOM cacheado como fallback. Genera `source_manifest.csv` automáticamente y conserva catálogos de resolución/rechazo.
+
+Flujo recomendado:
+
+```bash
+docker compose exec fastapi python -m dataset_pipeline.status
+docker compose exec fastapi python -m dataset_pipeline.inspect --datasets cbis_ddsm
+docker compose exec fastapi python -m dataset_pipeline.prepare --datasets cbis_ddsm
+```
+
+El adapter usa únicamente `pathology` como ground truth y mantiene una compuerta de cuatro vistas para el ensemble actual. Ver `docs/MIGRATION_V0_13.md`.
+
+## v0.14 — Metadata preflight de CBIS-DDSM y `.env.example` validado
+
+`.env.example` refleja ahora la configuración que ya pasó pruebas reales en la workstation RTX 5060 Ti:
+
+```env
+DEFAULT_MODEL_DEVICE=cpu
+GMIC_DEVICE=gpu
+NYU_DEVICE=gpu
+GLAM_DEVICE=gpu
+ALLOW_GPU=true
+GPU_NUMBER=0
+```
+
+Si los DICOM de CBIS-DDSM existen pero faltan uno o más de los cuatro CSV oficiales, `inspect` devuelve `METADATA_REQUIRED`, crea `workspace/datasets/raw/cbis_ddsm/METADATA_INSTRUCTIONS.md` y **no inicia** el índice DICOM. Después de colocar los cuatro CSV en cualquier subdirectorio bajo `raw/cbis_ddsm`, se vuelve a ejecutar `inspect`.

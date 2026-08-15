@@ -236,3 +236,35 @@ additions:
   name: glam_runtime_semantics_compatibility
   value: headless plotting, modern cuDNN capability API, device-local intermediate tensors, legacy integer index division, legacy grid_sample alignment
   reason: PyTorch/Matplotlib runtime semantics changed since the pinned GLAM implementation. These narrow compatibility edits are required to execute the same inference graph on a modern Blackwell runtime without changing model layers, learned parameters, checkpoint selection, output contract or training state.
+- id: ADD-042
+  name: cbis_ddsm_official_tcia_metadata_adapter
+  value: recursively ingest the four official CBIS-DDSM classification CSVs plus the authorized TCIA/NBIA DICOM tree
+  reason: The previous generic adapter required a researcher-authored source_manifest.csv. v0.13 removes that manual and error-prone mapping step for CBIS-DDSM by deriving patient, laterality, view and pathology only from the official release metadata and resolving those rows to downloaded DICOM files.
+- id: ADD-043
+  name: cbis_ddsm_pathology_only_ground_truth
+  value: MALIGNANT=1; BENIGN=0; BENIGN_WITHOUT_CALLBACK=0; unknown pathology rejected; BI-RADS never converted to cancer labels
+  reason: The thesis evaluates cancer classification. Ground truth must come from pathology supplied by the dataset, not from a heuristic conversion of radiologist assessment categories.
+- id: ADD-044
+  name: cbis_ddsm_recursive_raw_layout
+  value: any NBIA-generated folder hierarchy is accepted under /workspace/datasets/raw/cbis_ddsm; official CSVs are discovered recursively
+  reason: NBIA Data Retriever may preserve collection/case/UID directory levels. Requiring the researcher to flatten or rename roughly 160 GB of downloaded data would be fragile and unnecessary; the adapter resolves official paths by suffix/UID and caches a DICOM header index when needed.
+- id: ADD-045
+  name: cbis_ddsm_four_view_ensemble_gate
+  value: require L-CC, R-CC, L-MLO and R-MLO for the current GMIC+NYU+GLAM ensemble; incomplete exams are catalogued and rejected, never duplicated or synthesized
+  reason: The selected DMV-CNN/NYU exam-level classifier requires all four standard views. Fabricating a missing contralateral or projection view would change the scientific input and invalidate the evaluation, so v0.13 exposes compatibility counts before conversion.
+- id: ADD-046
+  name: cbis_ddsm_inspection_artifacts
+  value: metadata row catalog, view catalog, unresolved-row report, incomplete-study report, generated source_manifest.csv and cached DICOM header index
+  reason: Dataset adaptation is part of the thesis evidence. Persisting each mapping/rejection decision makes the transformation reproducible, auditable and diagnosable before expensive PNG conversion or model inference.
+- id: ADD-047
+  name: validated_three_gpu_env_example
+  value: DEFAULT_MODEL_DEVICE=cpu; GMIC_DEVICE=gpu; NYU_DEVICE=gpu; GLAM_DEVICE=gpu; ALLOW_GPU=true; GPU_NUMBER=0
+  reason: The three model-specific Blackwell runtimes have now passed GPU probes and end-to-end smoke tests on the target RTX 5060 Ti workstation. The distributed example environment should therefore reproduce the validated deployment state instead of the earlier CPU-safe bootstrap state.
+- id: ADD-048
+  name: cbis_ddsm_metadata_preflight_guard
+  value: inspect/prepare return METADATA_REQUIRED with exact missing files and instructions; DICOM indexing is not started until all four official classification tables are present
+  reason: NBIA image transfer can complete without the separate TCIA classification CSV supporting data. A research workflow should fail early and actionably rather than emit a Python traceback or spend time indexing DICOM files that cannot yet be labeled.
+- id: ADD-049
+  name: cbis_ddsm_metadata_filename_aliases
+  value: canonical *_case_description_* filenames plus TCIA Mass/Calc-Training/Test-Description.csv aliases
+  reason: TCIA data-access labels and downloaded filenames can differ while representing the same four official classification tables. Recognizing explicit aliases removes a packaging/layout dependency without changing metadata content or ground-truth semantics.

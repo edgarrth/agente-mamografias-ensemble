@@ -26,7 +26,7 @@ GPU = os.getenv("GPU_NUMBER", "0")
 BOOTSTRAP_MODE = os.getenv("MODEL_BOOTSTRAP_MODE", "lazy").lower()
 RESOURCE_SAMPLE_SECONDS = float(os.getenv("RESOURCE_SAMPLE_SECONDS", "2"))
 
-app = FastAPI(title="Mammography Model Runner", version="0.10.0")
+app = FastAPI(title="Mammography Model Runner", version="0.14.0")
 
 
 def cfg() -> dict:

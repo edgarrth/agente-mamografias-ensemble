@@ -44,3 +44,11 @@ Legacy model Dockerfile references verified for v0.5:
 - GLAM pinned `src/scripts/run_model.py`: https://raw.githubusercontent.com/nyukat/GLAM/17a0019860441e2ea8d7b7c7e0aaeada735e871f/src/scripts/run_model.py — contains the strict PyTorch 1.1.0 assertion, cuDNN capability check, device selection and visualization path addressed by the runtime compatibility layer.
 - GLAM pinned `src/modeling/glam.py`: https://raw.githubusercontent.com/nyukat/GLAM/17a0019860441e2ea8d7b7c7e0aaeada735e871f/src/modeling/glam.py — model architecture/device-placement source used to scope compatibility edits without changing layers or weights.
 - GLAM pinned `src/modeling/common_functions.py`: https://raw.githubusercontent.com/nyukat/GLAM/17a0019860441e2ea8d7b7c7e0aaeada735e871f/src/modeling/common_functions.py — historical index and sampling semantics explicitly preserved in the Blackwell runtime patch.
+
+
+## v0.13 CBIS-DDSM official adapter references
+
+- The Cancer Imaging Archive (TCIA), CBIS-DDSM collection page: official DICOM image release plus Mass/Calc Training/Test classification CSV access points.
+- Lee, R. S., Gimenez, F., Hoogi, A., Miyake, K. K., Gorovoy, M., & Rubin, D. L. (2017). *A curated mammography data set for use in computer-aided detection and diagnosis research*. Scientific Data, 4, 170177. DOI: 10.1038/sdata.2017.177. The paper documents the DICOM full mammograms, CC/MLO views, pathology field and the four metadata CSV filenames.
+- TCIA/NBIA Data Retriever documentation: authorized download mechanism for TCIA radiology manifests.
+- NYU breast_cancer_classifier README: the selected exam-level classifier requires four standard views (L-CC, R-CC, L-MLO, R-MLO), which motivates the v0.13 four-view compatibility gate.

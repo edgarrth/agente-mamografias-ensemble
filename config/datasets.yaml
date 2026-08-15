@@ -5,18 +5,35 @@ datasets:
     official_information: https://www.cancerimagingarchive.net/collection/cbis-ddsm/
     download_policy: explicit
     automatic_download: false
-    reason: "TCIA access uses official download tooling/manifests; the prototype does not bypass or automate access controls."
+    reason: TCIA/NBIA performs the authorized image transfer. v0.14 recursively ingests
+      the official DICOM tree and four TCIA classification CSVs; it never bypasses
+      access controls.
     raw_dir: /workspace/datasets/raw/cbis_ddsm
     processed_dir: /workspace/datasets/processed/cbis_ddsm
     source_manifest: /workspace/datasets/raw/cbis_ddsm/source_manifest.csv
     canonical_manifest: /workspace/datasets/manifests/cbis_ddsm.csv
+    adapter: official_tcia_cbis_ddsm
+    official_metadata_files:
+    - mass_case_description_train_set.csv
+    - mass_case_description_test_set.csv
+    - calc_case_description_train_set.csv
+    - calc_case_description_test_set.csv
+    metadata_catalog: /workspace/datasets/manifests/cbis_ddsm_metadata_rows.csv
+    view_catalog: /workspace/datasets/manifests/cbis_ddsm_view_catalog.csv
+    incomplete_manifest: /workspace/datasets/rejected/cbis_ddsm_incomplete_studies.csv
+    unresolved_manifest: /workspace/datasets/rejected/cbis_ddsm_unresolved_metadata_rows.csv
+    dicom_index_cache: /workspace/runtime/dataset_cache/cbis_ddsm_dicom_index.csv
+    minimum_full_image_pixels: 1000000
+    require_four_views_for_ensemble: true
+    ground_truth_source: official pathology column only
   vindr:
     name: VinDr-Mammo
     enabled: true
     official_information: https://physionet.org/content/vindr-mammo/
     download_policy: explicit
     automatic_download: false
-    reason: "PhysioNet access/usage requirements must be completed by the researcher; the prototype never bypasses them."
+    reason: PhysioNet access/usage requirements must be completed by the researcher;
+      the prototype never bypasses them.
     raw_dir: /workspace/datasets/raw/vindr
     processed_dir: /workspace/datasets/processed/vindr
     source_manifest: /workspace/datasets/raw/vindr/source_manifest.csv

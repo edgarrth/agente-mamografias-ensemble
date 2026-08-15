@@ -1,6 +1,7 @@
 from __future__ import annotations
 from ..config import load_yaml
-from .adapters import CBISDDSMDatasetAdapter, VinDrDatasetAdapter
+from .adapters import VinDrDatasetAdapter
+from .cbis_ddsm import CBISDDSMDatasetAdapter
 from ..logging_utils import audit
 
 FACTORY={"cbis_ddsm":CBISDDSMDatasetAdapter,"vindr":VinDrDatasetAdapter}
@@ -32,4 +33,16 @@ def prepare(keys: list[str]):
         if st["status"]=="NOT_DOWNLOADED":
             results.append({"dataset":k,"status":"SKIPPED_NOT_DOWNLOADED"}); continue
         results.append(adapter(k).prepare())
+    return results
+
+
+def inspect(keys: list[str], force_dicom_index: bool=False):
+    chosen=selected(keys); audit("DATASET_SELECTION",datasets=chosen,operation="inspect")
+    results=[]
+    for k in chosen:
+        a=adapter(k)
+        if hasattr(a,"inspect"):
+            results.append(a.inspect(force_dicom_index=force_dicom_index) if k=="cbis_ddsm" else a.inspect())
+        else:
+            results.append(a.status())
     return results

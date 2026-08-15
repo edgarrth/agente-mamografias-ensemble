@@ -13,3 +13,4 @@
 | Historical CUDA base image unavailable | Upstream model image cannot be rebuilt | Auditable `FROM`-only compatibility patch to an available CUDA 10.1/Ubuntu 18.04 NVIDIA image; record hashes and reason |
 | Upstream Dockerfile changes after compatibility rule was defined | Patch could target the wrong runtime definition | Exact first-line drift guard; fail explicitly and require a new reviewed project version |
 | XAI unavailable | Reduced interpretability | Report missing artifact; never create synthetic heatmap |
+| Dataset incompatible with four-view NYU input | CBIS-DDSM cases may not satisfy the current ensemble input contract | `dataset_pipeline.inspect` measures complete L-CC/R-CC/L-MLO/R-MLO studies first; incomplete cases are rejected and never synthesized |

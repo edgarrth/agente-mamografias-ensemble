@@ -4,10 +4,10 @@ from pydantic import BaseModel
 from .workspace import ensure_workspace
 from .logging_utils import log_configuration_additions, audit
 from .storage import init_db
-from .datasets.manager import statuses, request_download, prepare
+from .datasets.manager import statuses, request_download, prepare, inspect
 from .model_client import status as model_status
 
-app=FastAPI(title="Mammography AI Agent",version="0.4.0")
+app=FastAPI(title="Mammography AI Agent",version="0.14.0")
 
 @app.on_event("startup")
 def startup():
@@ -30,4 +30,9 @@ def download(req:DatasetSelection):
 @app.post("/datasets/prepare")
 def prep(req:DatasetSelection):
     try: return prepare(req.datasets)
+    except Exception as e: raise HTTPException(400,str(e))
+
+@app.post("/datasets/inspect")
+def inspect_dataset(req:DatasetSelection):
+    try: return inspect(req.datasets)
     except Exception as e: raise HTTPException(400,str(e))

@@ -79,8 +79,31 @@ output = /workspace/output/smoke_tests/nyu/predictions.csv
 
 El smoke test legacy CPU previo reportó `elapsed_seconds = 35.354556032999426`. Estas cifras son evidencia de funcionamiento/preliminar y no un benchmark final del experimento.
 
-## Estado GPU por modelo en v0.12
+## Estado GPU por modelo en v0.13
 
 - GMIC: `blackwell-cu128` validado con `gpu_probe` y smoke test real.
 - DMV-CNN/NYU: `blackwell-cu128` validado con `gpu_probe` y smoke test real.
-- GLAM: perfil `blackwell-cu128` incorporado en v0.12; `ensure_gpu` / `gpu_probe` / smoke GPU pendientes de ejecución en la workstation.
+- GLAM: `blackwell-cu128` validado; `gpu_probe=GPU_READY`; smoke GPU `READY`, elapsed 72.9107 s, sampled max VRAM 2448 MiB, 16 artefactos XAI.
+
+
+## Evidencia adicional recibida antes de v0.13
+
+- DMV-CNN/NYU smoke GPU: `READY`, imagen `mammography-model-nyu:blackwell-cu128`, elapsed 14.7271 s, sampled GPU util 7.4%, sampled max VRAM 2226 MiB.
+- GLAM smoke GPU: `READY`, imagen `mammography-model-glam:blackwell-cu128`, elapsed 72.9107 s, sampled GPU util 5.625%, sampled max VRAM 2448 MiB, 16 visualizaciones XAI.
+
+Estos tiempos son evidencia operacional de smoke tests y no se presentan como benchmark experimental definitivo.
+
+## Estado distribuido en v0.14
+
+`.env.example` queda alineado con el estado realmente probado el 2026-08-15:
+
+```env
+DEFAULT_MODEL_DEVICE=cpu
+GMIC_DEVICE=gpu
+NYU_DEVICE=gpu
+GLAM_DEVICE=gpu
+ALLOW_GPU=true
+GPU_NUMBER=0
+```
+
+Los tres modelos conservan perfiles Blackwell independientes en `config/models.yaml`; esta configuración de despliegue no cambia arquitectura, pesos ni checkpoints.
