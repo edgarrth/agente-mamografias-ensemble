@@ -1,0 +1,14 @@
+workspace:
+  root: /workspace
+  input: /workspace/input
+  datasets: /workspace/datasets
+  models: /workspace/models
+  runtime: /workspace/runtime
+  output: /workspace/output
+  logs: /workspace/logs
+
+research:
+  human_in_the_loop: true
+  diagnostic_use: false
+  use_llm: false
+  use_rag: false

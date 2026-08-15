@@ -1,0 +1,88 @@
+meta_repository:
+  repository: https://github.com/nyukat/mammography_metarepository.git
+  ref: master
+  local_path: /workspace/runtime/mammography_metarepository
+  note: The resolved git commit is recorded after cloning. Pin that commit before definitive thesis measurements.
+models:
+  gmic:
+    academic_name: Globally-Aware Multiple Instance Classifier (GMIC)
+    upstream_model_name: nyu_gmic
+    repository: https://github.com/nyukat/GMIC
+    upstream_commit_from_metarepo: 3bf4ce81dfa40553f108c8bfaf03bf006e082761
+    license: AGPL-3.0
+    native_granularity: image
+    canonical_aggregation: max_image_malignant
+    xai: official_visualization_flag
+    local_image: mammography-model-gmic:research
+    build_compatibility:
+      original_base_image: nvidia/cuda:10.1-base-ubuntu18.04
+      base_image_override: nvidia/cudagl:10.1-devel-ubuntu18.04
+      nvidia_repository_key_rotation_fix: auto
+      reason: The historical upstream CUDA 10.1 base tag is no longer resolvable. Use an available NVIDIA
+        CUDA 10.1 / Ubuntu 18.04 image while leaving the remaining upstream Dockerfile, model source commit
+        and checkpoints unchanged.
+    gpu_compatibility:
+      profile: blackwell-cu128
+      enabled: true
+      image: mammography-model-gmic:blackwell-cu128
+      dockerfile: /runner/model_compat/gmic-blackwell.Dockerfile
+      python: '3.10'
+      torch: 2.7.1
+      torchvision: 0.22.1
+      cuda_wheel: '12.8'
+      reason: The legacy GMIC image uses PyTorch 1.1.0 built for CUDA 9.0. It can enumerate the RTX 5060
+        Ti but hangs on the first CUDA tensor allocation. Use a separate Blackwell-compatible runtime
+        while preserving the original GMIC source commit and checkpoints.
+      compatibility_code_patches:
+      - 'src/scripts/run_model.py: torch.has_cudnn -> torch.backends.cudnn.is_available()'
+  nyu:
+    academic_name: DMV-CNN / NYU Breast Cancer Classifier
+    upstream_model_name: nyu_model
+    repository: https://github.com/nyukat/breast_cancer_classifier
+    upstream_commit_from_metarepo: de2b0855d02984df0f516008bb4513ff71460e21
+    license: AGPL-3.0
+    native_granularity: breast
+    canonical_aggregation: max_left_right_malignant
+    xai: none_required_for_core_score
+    local_image: mammography-model-nyu:research
+    build_compatibility:
+      original_base_image: nvidia/cuda:10.1-base-ubuntu18.04
+      base_image_override: nvidia/cudagl:10.1-devel-ubuntu18.04
+      nvidia_repository_key_rotation_fix: auto
+      reason: The historical upstream CUDA 10.1 base tag is no longer resolvable. Use an available NVIDIA
+        CUDA 10.1 / Ubuntu 18.04 image while leaving the remaining upstream Dockerfile, model source commit
+        and checkpoints unchanged.
+    gpu_compatibility:
+      profile: blackwell-cu128
+      enabled: true
+      image: mammography-model-nyu:blackwell-cu128
+      dockerfile: /runner/model_compat/nyu-blackwell.Dockerfile
+      python: '3.10'
+      torch: 2.7.1
+      torchvision: 0.22.1
+      cuda_wheel: '12.8'
+      compatibility_code_patches:
+      - 'src/modeling/run_model.py: torch.has_cudnn -> torch.backends.cudnn.is_available()'
+      - 'src/heatmaps/run_producer.py: torch.has_cudnn -> torch.backends.cudnn.is_available()'
+      - preserve metarepository heatmap output-directory creation patch in src/heatmaps/run_producer.py
+      reason: The legacy DMV-CNN/NYU image uses PyTorch 0.4.1 built for CUDA 9.2, which predates NVIDIA
+        Blackwell. Use a separate PyTorch 2.7.1 / CUDA 12.8 runtime for RTX 5060 Ti GPU validation while
+        preserving the upstream source commit, pretrained checkpoints, model architecture and inference
+        inputs/outputs.
+  glam:
+    academic_name: Global-Local Activation Maps (GLAM)
+    upstream_model_name: nyu_glam
+    repository: https://github.com/nyukat/GLAM
+    upstream_commit_from_metarepo: 17a0019860441e2ea8d7b7c7e0aaeada735e871f
+    license: AGPL-3.0
+    native_granularity: image
+    canonical_aggregation: max_image_malignant
+    xai: official_visualization_flag
+    local_image: mammography-model-glam:research
+    build_compatibility:
+      original_base_image: nvidia/cuda:10.1-base-ubuntu18.04
+      base_image_override: nvidia/cudagl:10.1-devel-ubuntu18.04
+      nvidia_repository_key_rotation_fix: auto
+      reason: The historical upstream CUDA 10.1 base tag is no longer resolvable. Use an available NVIDIA
+        CUDA 10.1 / Ubuntu 18.04 image while leaving the remaining upstream Dockerfile, model source commit
+        and checkpoints unchanged.

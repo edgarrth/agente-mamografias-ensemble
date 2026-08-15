@@ -1,0 +1,128 @@
+# Architecture change log
+
+## 2026-08-15 — v0.10: GPU profile owned by each model; per-model device routing
+
+- Removes global `GPU_RUNTIME_PROFILE` from `.env` and Docker Compose.
+- Resolves each compatibility profile exclusively from `config/models.yaml`.
+- Replaces global `MODEL_DEVICE` with `DEFAULT_MODEL_DEVICE` plus `GMIC_DEVICE`, `NYU_DEVICE` and `GLAM_DEVICE`.
+- Removes redundant `ALLOW_LEGACY_GPU`; GPU inference can only use the model-specific validated GPU image and still requires `gpu_probe=GPU_READY`.
+- Records the successful real GMIC Blackwell GPU smoke test supplied by the researcher: prediction CSV, 16 XAI artifacts, 86.91 s elapsed, 8.25% sampled average GPU utilization and 2424 MiB peak sampled GPU memory.
+- No model architecture, checkpoint, learned weight, ensemble rule or training behavior changes.
+
+**Reason:** a GPU runtime profile is a technical characteristic of a model, while CPU/GPU selection is a deployment decision. The previous global profile/device configuration could incorrectly imply that NYU and GLAM were ready for the GMIC Blackwell runtime.
+
+## 2026-08-15 — v0.9: GPU probe success logging fix
+
+- Fixes a duplicate `model` keyword in the structured log call executed after a successful GPU probe.
+- Keeps the runner-managed timeout and unconditional cleanup introduced in v0.8.
+- Adds a regression test so this success-path logging bug cannot silently return HTTP 500 again.
+- No model source, architecture, weights, checkpoint, PyTorch/CUDA profile or inference semantics change.
+
+**Reason:** the real GMIC Blackwell probe reached the success path but the response was converted into HTTP 500 by `log(..., model=model, **result)` because `result` already contained `model`.
+
+## 2026-08-15 — v0.7: Fedora WSL2 Docker GPU/CDI preflight
+
+- Records successful CPU build + real smoke tests for GMIC, DMV-CNN/NYU and GLAM on the research workstation.
+- Adds a host-side GPU doctor that checks WSL, `nvidia-smi`, `nvidia-ctk`, CDI specs and Docker-discovered NVIDIA devices.
+- Adds an explicit Fedora Remix / WSL2 NVIDIA Container Toolkit setup helper.
+- The helper never installs a Linux NVIDIA display driver; it installs only the container toolkit, configures Docker and generates/refreshes CDI metadata.
+- No model code, weights, checkpoints, preprocessing or ensemble behavior changes.
+
+**Reason:** WSL sees the RTX 5060 Ti, but Docker 29 fails `--gpus all` with `failed to discover GPU vendor from CDI: no known GPU vendor found`. This is a host Docker/NVIDIA integration issue that must be resolved before testing the legacy PyTorch/CUDA stacks on GPU.
+
+## 2026-08-15 — v0.6: NVIDIA legacy APT signing-key rotation compatibility
+
+- Keeps the v0.5 CUDA 10.1 / Ubuntu 18.04 base-image compatibility layer.
+- Detects whether the upstream Dockerfile already contains the NVIDIA CUDA signing-key refresh.
+- Preserves the upstream workaround when present (DMV-CNN/NYU).
+- Injects the same narrow signing-key refresh before `apt-get update` when absent (GMIC/GLAM).
+- Logs `NVIDIA_APT_KEY_ROTATION_COMPATIBILITY_APPLIED` and records the status in compatibility metadata.
+- Does not change model source, checkpoints, weights, training or prediction logic.
+
+**Reason:** the real GMIC build progressed beyond the v0.5 base-image fix and failed at `apt-get update` with `NO_PUBKEY A4B469963BF863CC`, a historical NVIDIA repository key-rotation issue.
+
+## 2026-08-15 — v0.5: auditable legacy CUDA base-image compatibility
+
+- Keeps one lightweight `model-runner` + three isolated model images.
+- Automatically trusts only the host-mounted NYU metarepository path with Git `safe.directory` when required.
+- Adds a narrow compatibility layer for GMIC, DMV-CNN/NYU and GLAM that changes only the historical Docker `FROM` image from `nvidia/cuda:10.1-base-ubuntu18.04` to `nvidia/cudagl:10.1-devel-ubuntu18.04`.
+- Generates the patched Dockerfile at runtime from the exact upstream Dockerfile and records original/generated SHA-256 hashes.
+- Refuses the patch if the upstream first line changed, preventing silent drift.
+- CLI commands now surface the Model Runner HTTP error detail instead of a generic `500 Server Error`.
+- No model source commit, checkpoint, training, inference logic or ensemble logic is changed.
+
+**Reason:** real workstation execution reached the upstream GMIC Docker build and proved that the historical `nvidia/cuda:10.1-base-ubuntu18.04` tag could no longer be resolved, while an NVIDIA CUDA 10.1 / Ubuntu 18.04 `cudagl` image was available.
+
+## 2026-08-15 — v0.4: robust Docker Desktop/WSL2 Model Runner boundary
+
+- Architecture remains one lightweight `model-runner` + three isolated model images.
+- Replaced Debian `docker.io` in the runner with Docker's official `docker:29-cli` image.
+- Added explicit `DOCKER_HOST=unix:///var/run/docker.sock`.
+- Added `/doctor` endpoint with socket ping, Docker CLI version and daemon info diagnostics.
+- Updated Compose socket mount to explicit bind syntax.
+- Added host-side `scripts/doctor.sh`.
+- No ML framework, checkpoint or inference algorithm was changed.
+
+**Reason:** v0.3 could remain unhealthy on a recent Docker Desktop because the Debian-packaged Docker CLI could be older than the daemon's minimum API. The change is infrastructure-only and preserves the model isolation and thesis methodology.
+
+## 2026-08-15 — v0.3: single Model Runner + three isolated model images
+
+### Change
+The three persistent controller services from v0.2 were consolidated into one persistent service:
+
+- `model-runner` / `mammography-model-runner`
+
+The actual model environments remain separate Docker images:
+
+- `mammography-model-gmic:research`
+- `mammography-model-nyu:research`
+- `mammography-model-glam:research`
+
+### Why
+Dependency isolation is required between the three legacy models, but that isolation already exists in their separate model images. Maintaining three additional FastAPI controller containers duplicated routing, health and Docker control logic without adding meaningful isolation. A single runner is simpler and better suited to a master’s thesis prototype.
+
+### Model Runner responsibility
+The runner performs only technical orchestration:
+
+- routes the requested model;
+- clones/verifies the NYU metarepository;
+- builds/reuses the selected model image;
+- creates a temporary inference container;
+- assigns GPU access when enabled;
+- serializes GPU inference with a shared lock;
+- captures resource metrics and logs;
+- removes the temporary inference container when finished.
+
+The runner intentionally does **not** contain PyTorch, TensorFlow, CUDA Toolkit, cuDNN or model checkpoints.
+
+### Model responsibility
+Each model image contains the upstream environment required by that model, including its own Python/framework/runtime dependencies and model artifacts as defined by the upstream research repository.
+
+### Security boundary
+Only `model-runner` receives `/var/run/docker.sock`. FastAPI, Streamlit and bootstrap do not. The temporary model containers also do not receive the Docker socket.
+
+### GPU policy
+Only one GPU inference executes at a time by default. The runner starts the selected child container with `--gpus device=<GPU_NUMBER>` and releases the lock after that inference finishes.
+
+---
+
+## 2026-08-15 — v0.2: per-model controller services (superseded)
+
+v0.2 introduced `gmic-runtime`, `nyu-runtime` and `glam-runtime` as three persistent controller services. This made each model boundary visible but duplicated the controller layer. v0.3 supersedes that topology while preserving the three isolated model images.
+
+
+## v0.8 — Runtime GPU Blackwell separado para GMIC
+
+- Runtime legacy `:research` se conserva para CPU.
+- Runtime `:blackwell-cu128` usa PyTorch 2.7.1/CUDA 12.8.
+- Nuevos `ensure-gpu` y `gpu-probe` con limpieza fail-safe.
+- Inferencia GPU nunca reutiliza silenciosamente la imagen legacy.
+
+## 2026-08-15 — v0.11: runtime Blackwell específico para DMV-CNN / NYU
+
+- Se agrega `mammography-model-nyu:blackwell-cu128` como imagen GPU independiente.
+- El perfil `blackwell-cu128` permanece como metadato del modelo en `config/models.yaml`; no vuelve a `.env`.
+- Se preserva el commit NYU `de2b0855d02984df0f516008bb4513ff71460e21` y los checkpoints upstream.
+- Se modernizan únicamente dependencias de ejecución a Python 3.10, PyTorch 2.7.1, TorchVision 0.22.1 y CUDA 12.8.
+- Los parches de compatibilidad se declaran por modelo en `compatibility_code_patches`, eliminando el texto hardcodeado específico de GMIC en la auditoría genérica del runner.
+- NYU continúa en CPU por defecto hasta completar `ensure_gpu`, `gpu_probe` y smoke test real en la workstation.

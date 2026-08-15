@@ -1,0 +1,13 @@
+baseline:
+  weights:
+    gmic: 0.333333
+    nyu: 0.333333
+    glam: 0.333334
+  threshold: 0.50
+
+discordance:
+  enabled: true
+  range_threshold: 0.30
+
+partial_failure:
+  require_all_models_for_valid_ensemble: true

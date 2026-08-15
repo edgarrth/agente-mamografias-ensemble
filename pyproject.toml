@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mammography-ai-agent"
+version = "0.11.0"
+description = "Master-thesis prototype: GMIC + DMV-CNN/NYU + GLAM with deterministic soft voting"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.30,<1",
+  "pydantic>=2.8,<3",
+  "typer>=0.12,<1",
+  "PyYAML>=6,<7",
+  "requests>=2.32,<3",
+  "pandas>=2.2,<3",
+  "numpy>=1.26,<3",
+  "scikit-learn>=1.5,<2",
+  "sqlalchemy>=2,<3",
+  "psycopg[binary]>=3.2,<4",
+  "streamlit>=1.38,<2",
+  "langgraph>=0.2,<2",
+  "pydicom>=3,<4",
+  "pypng>=0.20220715.0",
+  "psutil>=6,<8",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+
+[tool.setuptools.packages.find]
+include = ["mammography_agent*", "dataset_pipeline*", "tests_flow*", "experiments*", "model_tools*", "model_runner*"]

@@ -1,0 +1,23 @@
+datasets:
+  cbis_ddsm:
+    name: CBIS-DDSM
+    enabled: true
+    official_information: https://www.cancerimagingarchive.net/collection/cbis-ddsm/
+    download_policy: explicit
+    automatic_download: false
+    reason: "TCIA access uses official download tooling/manifests; the prototype does not bypass or automate access controls."
+    raw_dir: /workspace/datasets/raw/cbis_ddsm
+    processed_dir: /workspace/datasets/processed/cbis_ddsm
+    source_manifest: /workspace/datasets/raw/cbis_ddsm/source_manifest.csv
+    canonical_manifest: /workspace/datasets/manifests/cbis_ddsm.csv
+  vindr:
+    name: VinDr-Mammo
+    enabled: true
+    official_information: https://physionet.org/content/vindr-mammo/
+    download_policy: explicit
+    automatic_download: false
+    reason: "PhysioNet access/usage requirements must be completed by the researcher; the prototype never bypasses them."
+    raw_dir: /workspace/datasets/raw/vindr
+    processed_dir: /workspace/datasets/processed/vindr
+    source_manifest: /workspace/datasets/raw/vindr/source_manifest.csv
+    canonical_manifest: /workspace/datasets/manifests/vindr.csv

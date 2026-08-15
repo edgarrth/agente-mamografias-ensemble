@@ -1,0 +1,40 @@
+split:
+  configuration_ratio: 0.30
+  final_test_ratio: 0.70
+  by_patient: true
+  stratified: true
+  seed: 42
+
+weights:
+  W01: [0.333333, 0.333333, 0.333334]
+  W02: [0.40, 0.30, 0.30]
+  W03: [0.30, 0.40, 0.30]
+  W04: [0.30, 0.30, 0.40]
+  W05: [0.50, 0.25, 0.25]
+  W06: [0.25, 0.50, 0.25]
+  W07: [0.25, 0.25, 0.50]
+  W08: [0.50, 0.30, 0.20]
+  W09: [0.50, 0.20, 0.30]
+  W10: [0.30, 0.50, 0.20]
+  W11: [0.20, 0.50, 0.30]
+  W12: [0.30, 0.20, 0.50]
+  W13: [0.20, 0.30, 0.50]
+  W14: [0.60, 0.20, 0.20]
+  W15: [0.20, 0.60, 0.20]
+  W16: [0.20, 0.20, 0.60]
+
+thresholds:
+  T01: 0.40
+  T02: 0.45
+  T03: 0.50
+  T04: 0.55
+  T05: 0.60
+
+selection:
+  sensitivity_tolerance: 0.01
+  order:
+    - highest_roc_auc_by_weights
+    - lowest_false_negatives
+    - highest_sensitivity
+    - lowest_false_positives_within_tolerance
+    - nearest_baseline

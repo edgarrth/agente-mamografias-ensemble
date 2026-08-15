@@ -1,0 +1,178 @@
+services:
+  workspace-anchor:
+    image: alpine:3.20
+    container_name: mammography-workspace-anchor
+    command:
+    - sh
+    - -c
+    - mkdir -p /workspace && sleep infinity
+    volumes:
+    - ${HOST_WORKSPACE:-./workspace}:/workspace
+    restart: unless-stopped
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mammography}
+      POSTGRES_USER: ${POSTGRES_USER:-mammography}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mammography_research}
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U ${POSTGRES_USER:-mammography} -d ${POSTGRES_DB:-mammography}
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    volumes:
+    - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    restart: unless-stopped
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-mammography}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-mammography_research}
+    ports:
+    - 9000:9000
+    - 9001:9001
+    volumes:
+    - minio_data:/data
+    restart: unless-stopped
+  model-runner:
+    build:
+      context: .
+      dockerfile: docker/model-runner.Dockerfile
+      args:
+        DOCKER_CLI_IMAGE: ${DOCKER_CLI_IMAGE:-docker:29-cli}
+    container_name: mammography-model-runner
+    command:
+    - uvicorn
+    - model_runner.api:app
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8010'
+    environment:
+      WORKSPACE_ROOT: /workspace
+      DEFAULT_MODEL_DEVICE: ${DEFAULT_MODEL_DEVICE:-cpu}
+      GMIC_DEVICE: ${GMIC_DEVICE:-cpu}
+      NYU_DEVICE: ${NYU_DEVICE:-cpu}
+      GLAM_DEVICE: ${GLAM_DEVICE:-cpu}
+      GPU_NUMBER: ${GPU_NUMBER:-0}
+      MODEL_BOOTSTRAP_MODE: ${MODEL_BOOTSTRAP_MODE:-lazy}
+      RESOURCE_SAMPLE_SECONDS: ${RESOURCE_SAMPLE_SECONDS:-2}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DOCKER_HOST: unix:///var/run/docker.sock
+      ALLOW_GPU: ${ALLOW_GPU:-false}
+    volumes:
+    - ${HOST_WORKSPACE:-./workspace}:/workspace
+    - type: bind
+      source: /var/run/docker.sock
+      target: /var/run/docker.sock
+    - ./config:/runner/config:ro
+    depends_on:
+    - workspace-anchor
+    ports:
+    - 8010:8010
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -fsS
+      - http://localhost:8010/health
+      interval: 15s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  bootstrap:
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    command:
+    - python
+    - -c
+    - from mammography_agent.workspace import ensure_workspace; from mammography_agent.logging_utils
+      import log_configuration_additions,audit; from mammography_agent.storage import
+      init_db; ensure_workspace(); log_configuration_additions(); init_db(); audit('BOOTSTRAP_COMPLETED')
+    environment:
+      WORKSPACE_ROOT: /workspace
+      CONFIG_ROOT: /app/config
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://mammography:mammography_research@postgres:5432/mammography}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+    - ${HOST_WORKSPACE:-./workspace}:/workspace
+    - ./config:/app/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: 'no'
+  fastapi:
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    container_name: mammography-agent-fastapi
+    environment:
+      WORKSPACE_ROOT: /workspace
+      CONFIG_ROOT: /app/config
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://mammography:mammography_research@postgres:5432/mammography}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      DEFAULT_MAX_RUNTIME_MINUTES: ${DEFAULT_MAX_RUNTIME_MINUTES:-120}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      MODEL_RUNNER_URL: ${MODEL_RUNNER_URL:-http://model-runner:8010}
+    volumes:
+    - ${HOST_WORKSPACE:-./workspace}:/workspace
+    - ./config:/app/config:ro
+    ports:
+    - 8000:8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      model-runner:
+        condition: service_healthy
+      bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -fsS
+      - http://localhost:8000/health
+      interval: 15s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  streamlit:
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    command: streamlit run ui/streamlit_app.py --server.address=0.0.0.0 --server.port=8501
+    environment:
+      WORKSPACE_ROOT: /workspace
+      CONFIG_ROOT: /app/config
+      API_URL: http://fastapi:8000
+    volumes:
+    - ${HOST_WORKSPACE:-./workspace}:/workspace
+    - ./config:/app/config:ro
+    ports:
+    - 8501:8501
+    depends_on:
+      fastapi:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  postgres_data: {}
+  minio_data: {}
