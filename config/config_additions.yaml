@@ -323,7 +323,7 @@ additions:
     preserves operational signal without changing the healthcheck itself.
 - id: ADD-058
   name: container_version_exposure
-  value: VERSION copied to /app/VERSION and /runner/VERSION; API health/doctor report current package version (0.22.0)
+  value: VERSION copied to /app/VERSION and /runner/VERSION; API health/doctor report current package version (0.23.0)
   reason: Runtime version must be directly verifiable inside the running containers and must not retain stale hardcoded endpoint
     versions.
 - id: ADD-059
@@ -393,37 +393,106 @@ additions:
     warning noise and avoids relying on an API scheduled for removal without changing startup behavior.
 - id: ADD-070
   name: normal_test_reproducible_sampling
-  value: tests_flow.normal supports sequential, random, stratified proportional and balanced class-aware sampling with deterministic --seed
-  reason: The first successful 5-study CBIS-DDSM integration selected five benign studies because legacy first-N sampling was class-unaware. Reproducible class-aware sampling is required to exercise both ground-truth classes without changing the prepared dataset.
+  value: tests_flow.normal supports sequential, random, stratified proportional and balanced class-aware sampling with deterministic
+    --seed
+  reason: The first successful 5-study CBIS-DDSM integration selected five benign studies because legacy first-N sampling
+    was class-unaware. Reproducible class-aware sampling is required to exercise both ground-truth classes without changing
+    the prepared dataset.
 - id: ADD-071
   name: normal_test_sampling_traceability
-  value: every normal test writes selected_studies.csv and persists strategy, seed, available/requested/actual class distributions in configuration_used.yaml and run_summary.json
-  reason: A thesis result must be reproducible from the exact study identities and sampling policy rather than only a sample count.
+  value: every normal test writes selected_studies.csv and persists strategy, seed, available/requested/actual class distributions
+    in configuration_used.yaml and run_summary.json
+  reason: A thesis result must be reproducible from the exact study identities and sampling policy rather than only a sample
+    count.
 - id: ADD-072
   name: resource_monitoring_sample_naming
   value: resource metric field samples is renamed to monitoring_samples
-  reason: The previous field counted periodic resource-monitor observations, not dataset studies or mammography images. The ambiguous name could be misinterpreted in experimental reporting.
+  reason: The previous field counted periodic resource-monitor observations, not dataset studies or mammography images. The
+    ambiguous name could be misinterpreted in experimental reporting.
 - id: ADD-073
   name: unavailable_metric_reasons
-  value: metrics.json explicitly records sensitivity_unavailable_reason and roc_auc_unavailable_reason when a selected sample lacks the required ground-truth classes
-  reason: Null metrics are mathematically correct for single-class samples but must be explained explicitly in research evidence instead of appearing as unexplained missing values.
+  value: metrics.json explicitly records sensitivity_unavailable_reason and roc_auc_unavailable_reason when a selected sample
+    lacks the required ground-truth classes
+  reason: Null metrics are mathematically correct for single-class samples but must be explained explicitly in research evidence
+    instead of appearing as unexplained missing values.
 - id: ADD-074
   name: normal_test_run_summary
   value: normal tests persist run_summary.json with processed_studies, processed_images, sampling metadata and overall_elapsed_seconds
-  reason: End-to-end evaluation needs an unambiguous distinction between study/image counts, resource-monitor observations and wall-clock runtime.
+  reason: End-to-end evaluation needs an unambiguous distinction between study/image counts, resource-monitor observations
+    and wall-clock runtime.
 - id: ADD-075
   name: configuration_score_analysis
-  value: cached raw model scores can be analyzed without GPU inference; outputs include per-model ROC-AUC, class distributions, correlations, ROC points, candidate thresholds and explicit research guards
-  reason: The first balanced 10-study real run showed that the fixed 0.50 baseline threshold was far above observed ensemble scores and that ranking quality must be inspected independently of classification threshold before the full experiment.
+  value: cached raw model scores can be analyzed without GPU inference; outputs include per-model ROC-AUC, class distributions,
+    correlations, ROC points, candidate thresholds and explicit research guards
+  reason: The first balanced 10-study real run showed that the fixed 0.50 baseline threshold was far above observed ensemble
+    scores and that ranking quality must be inspected independently of classification threshold before the full experiment.
 - id: ADD-076
   name: adaptive_configuration_threshold_grid
-  value: the 5 threshold candidates for each of 16 weight combinations are Configuration-Set score quantiles T01=0.10, T02=0.30, T03=0.50, T04=0.70, T05=0.90; candidate derivation is label-independent
-  reason: The legacy fixed 0.40-0.60 grid would classify every observed v0.21 score as negative. Deriving candidates from Configuration-Set score scale preserves 16x5=80 CPU combinations while avoiding a demonstrably irrelevant absolute range and without using final-test labels or scores.
+  value: the 5 threshold candidates for each of 16 weight combinations are Configuration-Set score quantiles T01=0.10, T02=0.30,
+    T03=0.50, T04=0.70, T05=0.90; candidate derivation is label-independent
+  reason: The legacy fixed 0.40-0.60 grid would classify every observed v0.21 score as negative. Deriving candidates from
+    Configuration-Set score scale preserves 16x5=80 CPU combinations while avoiding a demonstrably irrelevant absolute range
+    and without using final-test labels or scores.
 - id: ADD-077
   name: final_test_inference_isolation_and_cache
-  value: experimental configuration inference occurs only on the Configuration Set; Final Test Set inference is forbidden before freeze and an existing final raw_model_predictions.csv is reused on repeated final_evaluation calls
-  reason: The thesis methodology requires final-test isolation until configuration is frozen and models should not be rerun unnecessarily. Each study is therefore inferred at most once within a given experiment workflow.
+  value: experimental configuration inference occurs only on the Configuration Set; Final Test Set inference is forbidden
+    before freeze and an existing final raw_model_predictions.csv is reused on repeated final_evaluation calls
+  reason: The thesis methodology requires final-test isolation until configuration is frozen and models should not be rerun
+    unnecessarily. Each study is therefore inferred at most once within a given experiment workflow.
 - id: ADD-078
   name: experiment_score_evidence
-  value: experimental configuration and final phases persist score-analysis evidence in configuration_score_analysis/ and final_score_analysis/ respectively
-  reason: Weight/threshold decisions and final interpretation must be traceable to raw malignancy scores, model-specific discrimination and score correlations rather than only the consolidated confusion matrix.
+  value: experimental configuration and final phases persist score-analysis evidence in configuration_score_analysis/ and
+    final_score_analysis/ respectively
+  reason: Weight/threshold decisions and final interpretation must be traceable to raw malignancy scores, model-specific discrimination
+    and score correlations rather than only the consolidated confusion matrix.
+- id: ADD-079
+  name: breast_aware_aggregation_diagnostic
+  value: CPU-only comparison of current max-per-model-then-vote versus vote-per-breast-then-max across all 16 weight combinations
+  reason: NYU showed substantially stronger discrimination at breast level than study level in the 10-study diagnostic. The
+    alternative aggregation order must be tested from cached scores before changing the production contract; diagnostic results
+    remain ineligible for freeze.
+- id: ADD-080
+  name: input_fidelity_audit
+  value: audit selected 16-bit PNG headers, source DICOM presentation metadata when available, and upstream crop/center metadata
+    including distance_from_starting_side and best_center
+  reason: GMIC and GLAM remain weak already at breast level while NYU retains useful breast-level signal. Before more weight/threshold
+    optimization, verify DICOM-to-PNG fidelity and model-native preprocessing/orientation evidence without rerunning GPU inference
+    or mutating the dataset.
+- id: ADD-081
+  name: orientation_counterfactual_diagnostic
+  value: toggle horizontal_flip only for studies where all four unique views have distance_from_starting_side != 0, rerun
+    the three models only for those studies, and compare upstream geometric preprocessing evidence plus secondary score impact
+  reason: v0.25 validated 40/40 PNG and DICOM input fidelity but localized the orientation gap signal to two complete studies.
+    Upstream NYU/GMIC documents this metadata as useful for detecting a wrong horizontal_flip depending on dataset. Geometry,
+    not post-hoc AUC, is the primary decision criterion.
+  version: 0.26.0
+
+- id: ADD-082
+  name: automatic_orientation_resolution
+  value: before classifier inference, run label-independent NYU upstream crop+center preprocessing; trigger only when all four unique views have distance_from_starting_side != 0 and accept horizontal_flip toggle only when all four counterfactual distances become zero
+  reason: v0.26 counterfactual evidence showed that the two four-view-gap studies changed from mean distances 839.5/813.5 pixels to 0 for all views and all three models when horizontal_flip was toggled. The rule therefore operationalizes upstream geometric evidence without using ground truth, model scores, AUC, ensemble weights or thresholds.
+  version: 0.27.0
+
+- id: ADD-083
+  name: nyu_preprocess_only_pythonpath_fix
+  value: PREPROCESS_ONLY exports /home/bcc/breast_cancer_classifier into PYTHONPATH before invoking upstream crop_mammogram.py and get_optimal_centers.py directly
+  reason: v0.27.0 orientation preflight exposed the upstream repository requirement that individual Python scripts include the repository root in PYTHONPATH; without it crop_mammogram.py fails at import src.utilities.pickling before preprocessing starts
+  version: 0.27.1
+
+- id: ADD-084
+  name: upstream_reference_runtime_validation
+  value: run GMIC, NYU and GLAM Blackwell compatibility images on the official 4-exam mammography metarepository sample and compare image/breast AUROC and AUPRC with the three-decimal reproduction references published upstream
+  reason: After correcting CBIS-DDSM orientation, discrimination remains weak and mixed across models. Before attributing this to dataset/domain shift, validate that the modern Blackwell runtime preserves the upstream sample score ordering without changing model weights, ensemble weights, thresholds or CBIS-DDSM data.
+  version: 0.28.0
+
+- id: ADD-085
+  name: input_scale_and_small_sample_uncertainty_diagnostics
+  value: before upstream GPU reproduction, compare CBIS-DDSM versus official-sample 16-bit PNG intensity distributions and optional NYU upstream-cropped pixels without classifier inference; score analysis also reports 2,000-replicate stratified-bootstrap ROC-AUC confidence intervals and the pairwise AUC step for small diagnostic sets
+  reason: The corrected 10-study run still produces low malignancy-score ranges across all three NYU-family models. A shared input-scale mismatch is therefore worth checking cheaply before GPU reference inference, while n=10 point-estimate AUC deltas must be accompanied by explicit uncertainty rather than interpreted as conclusive changes.
+  version: 0.28.1
+
+- id: ADD-086
+  name: glam_legacy_cpu_vs_blackwell_runtime_differential
+  value: compare GLAM predictions on the official 4-exam sample between the pinned upstream PyTorch 1.1 CPU image and the PyTorch 2.7/CUDA 12.8 Blackwell compatibility image; compare per-image scores, pairwise ordering and official AUROC/AUPRC reproduction
+  reason: v0.28.1 upstream validation reproduces GMIC and NYU to the published three-decimal references, but GLAM changes image/breast ordering (observed 0.800/0.800 vs expected 0.700/0.733). A direct legacy-runtime differential isolates whether the mismatch was introduced by Blackwell compatibility changes or is already present in the current upstream artifact.
+  version: 0.28.2

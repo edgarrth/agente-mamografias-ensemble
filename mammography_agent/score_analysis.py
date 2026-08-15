@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score, roc_curve
 
+from .ensemble.metrics import evaluate
+
 from .config import load_yaml, WORKSPACE_ROOT
 from .reporting import write_json
 
@@ -49,6 +51,46 @@ def _safe_auc(y: pd.Series, score: pd.Series) -> float | None:
     return float(roc_auc_score(y.astype(int), score.astype(float)))
 
 
+def stratified_bootstrap_auc(
+    y: pd.Series | np.ndarray,
+    score: pd.Series | np.ndarray,
+    *,
+    replicates: int = 2000,
+    seed: int = 42,
+) -> dict:
+    """Stratified patient/study-level bootstrap CI for ROC-AUC.
+
+    The bootstrap preserves the observed benign/malignant counts in every replicate,
+    avoiding invalid one-class resamples in very small diagnostic sets.  It is an
+    uncertainty description only; it is never used to select weights or thresholds.
+    """
+    y_arr = np.asarray(y, dtype=int)
+    s_arr = np.asarray(score, dtype=float)
+    pos = np.flatnonzero(y_arr == 1)
+    neg = np.flatnonzero(y_arr == 0)
+    if len(pos) == 0 or len(neg) == 0:
+        return {
+            "roc_auc_ci95_low": None,
+            "roc_auc_ci95_high": None,
+            "bootstrap_replicates": 0,
+            "bootstrap_method": "stratified_by_class",
+        }
+    rng = np.random.default_rng(int(seed))
+    values = np.empty(int(replicates), dtype=float)
+    for i in range(int(replicates)):
+        draw_pos = rng.choice(pos, size=len(pos), replace=True)
+        draw_neg = rng.choice(neg, size=len(neg), replace=True)
+        idx = np.concatenate([draw_neg, draw_pos])
+        values[i] = roc_auc_score(y_arr[idx], s_arr[idx])
+    low, high = np.quantile(values, [0.025, 0.975])
+    return {
+        "roc_auc_ci95_low": float(low),
+        "roc_auc_ci95_high": float(high),
+        "bootstrap_replicates": int(replicates),
+        "bootstrap_method": "stratified_by_class",
+    }
+
+
 def threshold_strategy_config() -> dict:
     cfg = load_yaml("experiments.yaml")
     strategy = cfg.get("threshold_strategy", {})
@@ -64,12 +106,17 @@ def threshold_strategy_config() -> dict:
     return strategy
 
 
-def derive_threshold_candidates(scores: pd.Series | np.ndarray, strategy: dict | None = None) -> list[dict]:
+def derive_threshold_candidates(
+    scores: pd.Series | np.ndarray,
+    strategy: dict | None = None,
+    threshold_source: str = "configuration_score_quantile",
+) -> list[dict]:
     """Derive five deterministic, label-independent thresholds from score quantiles.
 
-    The candidate values depend only on model/ensemble scores in the Configuration Set.
-    Ground truth is deliberately not consulted here; labels are used later only to score
-    the candidate configurations. This keeps the Final Test Set isolated and avoids the
+    Candidate values depend only on the supplied model/ensemble scores. Ground truth is
+    deliberately not consulted here; labels may be used later only to evaluate already
+    derived candidates. In formal experiments the supplied scores come exclusively from
+    the Configuration Set. This keeps the Final Test Set isolated and avoids the
     obsolete fixed 0.40-0.60 grid when a model emits scores on a much lower range.
     """
     strategy = strategy or threshold_strategy_config()
@@ -82,7 +129,7 @@ def derive_threshold_candidates(scores: pd.Series | np.ndarray, strategy: dict |
             "threshold_id": str(tid),
             "threshold_quantile": float(q),
             "threshold": float(np.quantile(values, float(q))),
-            "threshold_source": "configuration_score_quantile",
+            "threshold_source": str(threshold_source),
             "ground_truth_used_for_threshold_derivation": False,
         })
     return rows
@@ -133,9 +180,11 @@ def analyze_score_frame(df: pd.DataFrame, output_dir: Path, source: str | None =
         auc = _safe_auc(y, values)
         benign = values[y == 0]
         malignant = values[y == 1]
+        ci = stratified_bootstrap_auc(y, values)
         metric_rows.append({
             "model": model,
             "roc_auc": auc,
+            **ci,
             "mean_benign": float(benign.mean()) if len(benign) else None,
             "mean_malignant": float(malignant.mean()) if len(malignant) else None,
             "median_benign": float(benign.median()) if len(benign) else None,
@@ -149,7 +198,7 @@ def analyze_score_frame(df: pd.DataFrame, output_dir: Path, source: str | None =
         distribution_rows.append(_distribution_row(model, "MALIGNANT", malignant))
         if auc is not None and auc < 0.5:
             warnings.append(
-                f"{model} ROC-AUC is below 0.5 in this analysis set. v0.22 records the warning but does not invert or recalibrate scores."
+                f"{model} ROC-AUC is below 0.5 in this analysis set. v0.23 records the warning but does not invert or recalibrate scores."
             )
 
     metrics_df = pd.DataFrame(metric_rows)
@@ -187,24 +236,42 @@ def analyze_score_frame(df: pd.DataFrame, output_dir: Path, source: str | None =
     exp_cfg = load_yaml("experiments.yaml")
     strategy = threshold_strategy_config()
     threshold_rows = []
+    diagnostic_metric_rows = []
     if include_candidate_thresholds:
         for weight_id, w in exp_cfg["weights"].items():
             weighted = df.gmic_score * float(w[0]) + df.nyu_score * float(w[1]) + df.glam_score * float(w[2])
-            for row in derive_threshold_candidates(weighted, strategy):
-                threshold_rows.append({
+            for row in derive_threshold_candidates(weighted, strategy, threshold_source="analysis_score_quantile"):
+                base_row = {
                     "weight_id": weight_id,
                     "w_gmic": float(w[0]),
                     "w_nyu": float(w[1]),
                     "w_glam": float(w[2]),
                     **row,
+                }
+                threshold_rows.append(base_row)
+                diagnostic_metric_rows.append({
+                    **base_row,
+                    **evaluate(y, weighted, float(row["threshold"])),
+                    "diagnostic_only": True,
+                    "eligible_for_freeze": False,
                 })
         pd.DataFrame(threshold_rows).to_csv(output_dir / "candidate_thresholds.csv", index=False)
+        diagnostic_df = pd.DataFrame(diagnostic_metric_rows)
+        diagnostic_df.to_csv(output_dir / "diagnostic_configurations.csv", index=False)
+        diagnostic_ranking = diagnostic_df.sort_values(
+            ["roc_auc","balanced_accuracy","sensitivity","specificity","fn","fp","weight_id","threshold_id"],
+            ascending=[False,False,False,False,True,True,True,True],
+            na_position="last",
+        ).reset_index(drop=True)
+        diagnostic_ranking.to_csv(output_dir / "diagnostic_ranking.csv", index=False)
 
     observed_max = float(df["baseline_ensemble_score"].max())
     if baseline_threshold > observed_max:
         warnings.append(
             f"Baseline threshold {baseline_threshold:.6f} is above the maximum baseline ensemble score observed in this analysis set ({observed_max:.6f})."
         )
+
+    baseline_classification_metrics = evaluate(y, df["baseline_ensemble_score"], baseline_threshold)
 
     summary = {
         "source": source,
@@ -217,6 +284,16 @@ def analyze_score_frame(df: pd.DataFrame, output_dir: Path, source: str | None =
             "ensemble_score_max": observed_max,
             "ensemble_score_mean": float(df["baseline_ensemble_score"].mean()),
             "roc_auc": _safe_auc(y, df["baseline_ensemble_score"]),
+            "roc_auc_uncertainty": stratified_bootstrap_auc(y, df["baseline_ensemble_score"]),
+            "classification_metrics": baseline_classification_metrics,
+        },
+        "statistical_uncertainty": {
+            "benign_studies": int((y == 0).sum()),
+            "malignant_studies": int((y == 1).sum()),
+            "strict_pairwise_auc_step": (float(1.0 / (((y == 0).sum()) * ((y == 1).sum()))) if (y == 0).sum() and (y == 1).sum() else None),
+            "bootstrap_method": "stratified_by_class",
+            "bootstrap_replicates": 2000,
+            "interpretation": "Small diagnostic sets have coarse and uncertain ROC-AUC estimates; confidence intervals are descriptive and are not used for configuration selection.",
         },
         "threshold_strategy": {
             "mode": strategy["mode"],
@@ -224,6 +301,8 @@ def analyze_score_frame(df: pd.DataFrame, output_dir: Path, source: str | None =
             "derive_per_weight": bool(strategy.get("derive_per_weight", True)),
             "ground_truth_used_for_threshold_derivation": False,
             "candidate_thresholds_generated": bool(include_candidate_thresholds),
+            "diagnostic_configuration_metrics_generated": bool(include_candidate_thresholds),
+            "diagnostic_results_eligible_for_freeze": False,
         },
         "warnings": warnings,
         "research_guards": {
@@ -250,12 +329,41 @@ def analyze_score_frame(df: pd.DataFrame, output_dir: Path, source: str | None =
         "- **threshold_derivation_uses_ground_truth**: False",
         "- **score_inversion_or_calibration**: None",
         "",
+        "## Baseline classification metrics",
+        "",
+        f"- **TN / FP / FN / TP**: {baseline_classification_metrics['tn']} / {baseline_classification_metrics['fp']} / {baseline_classification_metrics['fn']} / {baseline_classification_metrics['tp']}",
+        f"- **Sensitivity**: {baseline_classification_metrics['sensitivity']}",
+        f"- **Specificity**: {baseline_classification_metrics['specificity']}",
+        f"- **Precision / PPV**: {baseline_classification_metrics['precision_ppv']}",
+        f"- **NPV**: {baseline_classification_metrics['npv']}",
+        f"- **FPR**: {baseline_classification_metrics['fpr']}",
+        f"- **Balanced Accuracy**: {baseline_classification_metrics['balanced_accuracy']}",
+        "",
+        "## Diagnostic candidate evaluation",
+        "",
+        "- **diagnostic_only**: True",
+        "- **eligible_for_freeze**: False",
+        "- When candidate thresholds are enabled, see `diagnostic_configurations.csv` and `diagnostic_ranking.csv` for the 16×5 CPU-only preview on this analysis set.",
+        "",
         "## Per-model ROC-AUC",
         "",
     ]
     for row in metric_rows:
-        report_lines.append(f"- **{row['model']}**: {row['roc_auc']}")
-    report_lines += ["", "## Warnings", ""]
+        report_lines.append(
+            f"- **{row['model']}**: {row['roc_auc']} "
+            f"(stratified-bootstrap 95% CI {row['roc_auc_ci95_low']}–{row['roc_auc_ci95_high']}, n=2000)"
+        )
+    n_neg = int((y == 0).sum()); n_pos = int((y == 1).sum())
+    pair_step = (1.0 / (n_neg * n_pos)) if n_neg and n_pos else None
+    report_lines += [
+        "", "## Statistical uncertainty", "",
+        f"- **benign / malignant studies**: {n_neg} / {n_pos}",
+        f"- **one strictly ordered positive-negative pair changes AUC by approximately**: {pair_step if pair_step is not None else 'N/A'}",
+        "- **CI method**: 2,000-replicate stratified bootstrap preserving class counts.",
+        "- These intervals describe uncertainty only. They are not used to choose weights, thresholds, orientation, or aggregation.",
+        "- With a 5/5 diagnostic set, modest AUC changes can correspond to only a few pairwise order changes and must not be treated as conclusive.",
+        "", "## Warnings", ""
+    ]
     report_lines += [f"- {w}" for w in warnings] if warnings else ["- None"]
     (output_dir / "score_analysis_report.md").write_text("\n".join(report_lines) + "\n", encoding="utf-8")
     return output_dir

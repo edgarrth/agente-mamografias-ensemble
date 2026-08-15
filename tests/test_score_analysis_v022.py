@@ -17,7 +17,7 @@ def test_score_analysis_writes_research_evidence(tmp_path: Path):
     for name in [
         "score_summary.json","model_metrics.csv","score_distribution.csv",
         "model_correlations.csv","roc_points.csv","candidate_thresholds.csv",
-        "score_analysis_report.md",
+        "diagnostic_configurations.csv","diagnostic_ranking.csv","score_analysis_report.md",
     ]:
         assert (tmp_path/name).exists(), name
     summary=json.loads((tmp_path/"score_summary.json").read_text())
@@ -26,5 +26,14 @@ def test_score_analysis_writes_research_evidence(tmp_path: Path):
     assert summary["threshold_strategy"]["ground_truth_used_for_threshold_derivation"] is False
     candidates=pd.read_csv(tmp_path/"candidate_thresholds.csv")
     assert len(candidates)==80
+    assert set(candidates.threshold_source)=={"analysis_score_quantile"}
+    assert summary["baseline"]["classification_metrics"]["specificity"] is not None
+    assert "balanced_accuracy" in summary["baseline"]["classification_metrics"]
+    assert summary["threshold_strategy"]["diagnostic_results_eligible_for_freeze"] is False
+    diagnostic=pd.read_csv(tmp_path/"diagnostic_configurations.csv")
+    assert len(diagnostic)==80
+    assert set(diagnostic.diagnostic_only)=={True}
+    assert set(diagnostic.eligible_for_freeze)=={False}
+    assert {"specificity","precision_ppv","npv","fpr","balanced_accuracy"}.issubset(diagnostic.columns)
     metrics=pd.read_csv(tmp_path/"model_metrics.csv")
     assert set(metrics.model)=={"gmic","nyu","glam","baseline_ensemble"}

@@ -228,3 +228,48 @@ v0.2 introduced `gmic-runtime`, `nyu-runtime` and `glam-runtime` as three persis
 - La derivación de thresholds es independiente de `ground_truth`; ninguna inversión de score, calibración, entrenamiento o ajuste de modelo se realiza automáticamente.
 - El Final Test Set no se infiere antes de congelar configuración. La inferencia final queda cacheada y se reutiliza en reejecuciones del mismo experimento.
 - No cambian modelos, pesos preentrenados, runtimes Blackwell, dataset preparado ni regla de Soft Voting.
+
+
+## 2026-08-15 — v0.23: balanced operating-point selection and richer metrics
+
+- Se añaden Specificity, PPV, NPV, FPR, Accuracy y Balanced Accuracy a la evaluación threshold-dependent.
+- La selección experimental deja de priorizar `FN=0` a cualquier costo: ROC-AUC selecciona pesos y Balanced Accuracy selecciona threshold; Sensitivity/Specificity/FP resuelven empates.
+- Los thresholds de un análisis diagnóstico se etiquetan `analysis_score_quantile`; `configuration_score_quantile` queda reservado al Configuration Set formal.
+- `score_summary.json` y el reporte diagnóstico exponen métricas del baseline threshold.
+- Se preserva el aislamiento Configuration Set → freeze → Final Test Set y el cache de inferencia final.
+- No se modifican modelos, checkpoints, runtimes GPU, dataset preparado, XAI ni fórmula de Soft Voting.
+
+## v0.24 — score provenance audit
+
+- Se agrega auditoría CPU de outputs nativos GMIC/NYU/GLAM antes de la evaluación formal.
+- Reconstruye vista → mama → estudio y valida que el score persistido coincida con la agregación actual `max`.
+- Compara ROC-AUC a nivel mama y estudio y registra alineamiento de la mama de score máximo con la lateralidad maligna.
+- No modifica inferencia, modelos, pesos, thresholds, calibración ni reglas de agregación.
+
+
+## v0.24.2 — compatibilidad de auditoría con runs chunked
+
+- `score_provenance` deja de asumir `<run>/model_batch/` como única ubicación de outputs nativos.
+- Descubre `chunks/<NNNN>/model_batch/`, combina múltiples chunks y conserva la procedencia exacta de cada CSV.
+- Cuando falta `study_order.csv`, reconstruye el orden desde el `raw_model_predictions.csv` local al chunk para preservar el contrato posicional de NYU.
+- Valida cobertura total, solapamientos y duplicados antes de calcular métricas.
+- No cambia modelos, scores, ensemble, threshold, agregación ni dataset.
+
+
+## v0.25.0 — input fidelity before full experimental inference
+
+- Adds a CPU-only breast-aware aggregation diagnostic; it never changes the production aggregation contract.
+- Adds an input-fidelity audit over prepared PNG headers, original DICOM presentation metadata when available, and model-native preprocessing metadata.
+- Keeps all 10-study diagnostic outputs explicitly ineligible for configuration freeze.
+- Synchronizes package/API version metadata to 0.25.0.
+
+## v0.26.0 — targeted orientation counterfactual
+- Adds a diagnostic-only horizontal orientation counterfactual for studies where all four unique views report `distance_from_starting_side != 0` in upstream preprocessing.
+- The original run and prepared dataset remain immutable; only suspect studies are copied into a diagnostic batch with `horizontal_flip` toggled.
+- GMIC/NYU/GLAM are rerun only for those studies to compare preprocessing geometry and score impact.
+- Orientation decisions must use upstream geometric evidence first. Any AUC change is recorded as secondary/post-hoc evidence and is not eligible for freeze.
+
+
+## v0.26.1 — bootstrap configuration-addition schema fix
+
+Corrige la entrada de `orientation_counterfactual_diagnostic` para registrar `id: ADD-081`. Añade validación explícita de campos requeridos antes de escribir `configuration_additions.log`, evitando `KeyError` opacos durante bootstrap y cubriendo el contrato con tests de regresión. No cambia modelos, scores, pesos, threshold, dataset ni lógica del contrafactual v0.26.

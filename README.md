@@ -136,8 +136,8 @@ Esta sección centraliza los comandos usados durante la validación del prototip
 | `docker compose logs -f model-runner` | Sigue el ciclo de inferencia del Model Runner: espera/adquisición GPU, inicio de contenedor temporal, inicio/fin de comando, éxito/fallo y métricas resumidas. | Nada. | Eventos de inferencia visibles sin spam de healthchecks. |
 | `./scripts/logs.sh` | Wrapper para seguir en vivo los logs de `fastapi` y `model-runner` con un tail inicial configurable (`TAIL_LINES=200 ./scripts/logs.sh`). | Nada. | Logs operativos de servicios; eventos CLI persisten además en `workspace/logs/*.jsonl`. |
 | `tail -f workspace/logs/audit.jsonl workspace/logs/model_runner.jsonl` | Sigue la auditoría persistente de CLI/pipeline y Runner desde el host. | Nada. | Eventos JSONL incluso cuando el comando se ejecutó mediante `docker compose exec`. |
-| `docker compose exec fastapi cat /app/VERSION` | Verifica versión del código dentro de FastAPI. | Nada. | `0.22.0`. |
-| `docker compose exec model-runner cat /runner/VERSION` | Verifica versión del Model Runner. | Nada. | `0.22.0`. |
+| `docker compose exec fastapi cat /app/VERSION` | Verifica versión del código dentro de FastAPI. | Nada. | `0.26.1`. |
+| `docker compose exec model-runner cat /runner/VERSION` | Verifica versión del Model Runner. | Nada. | `0.26.1`. |
 | `docker compose exec model-runner docker version` | Verifica cliente/daemon Docker desde el Runner. | Nada. | Client/Server accesibles. |
 | `docker compose exec model-runner docker info` | Diagnóstico detallado del daemon desde el Runner. | Nada. | Información del Engine sin error. |
 | `docker compose exec fastapi python -m model_tools.status` | Estado de imágenes, perfiles GPU y device por modelo. | Nada. | GMIC/NYU/GLAM `device=gpu` en workstation validada. |
@@ -155,9 +155,9 @@ Esta sección centraliza los comandos usados durante la validación del prototip
 | `docker compose exec fastapi python -m dataset_pipeline.prepare --datasets cbis_ddsm` | Convierte **solo estudios de 4 vistas compatibles** a PNG 16-bit y escribe manifiesto canónico. | Escribe/regenera `processed/cbis_ddsm/images/*.png` y `manifests/cbis_ddsm.csv`; **no limpia, borra ni modifica DICOM raw**. No elimina derivados antiguos no referenciados. | `AVAILABLE`, `converted_studies=...`. |
 | `docker compose exec fastapi python -m tests_flow.normal --datasets cbis_ddsm --samples 10 --sampling stratified --seed 42 --max-runtime-minutes 30` | Prueba end-to-end con sampling proporcional reproducible. En el CBIS-DDSM preparado actual (72 benignos/33 malignos), 10 seleccionan objetivo 7/3. | Solo `workspace/output/normal_tests/<run>/` y logs; no modifica dataset preparado. | `selected_studies.csv`, `run_summary.json`, `NORMAL_TEST_COMPLETED` y predicciones/métricas. |
 | `docker compose exec fastapi python -m tests_flow.normal --datasets cbis_ddsm --samples 10 --sampling balanced --seed 42 --max-runtime-minutes 30` | Prueba de integración balanceada que fuerza cuotas iguales por clase cuando hay disponibilidad; útil para ejercitar TN/FP/FN/TP. | Solo outputs/logs de la nueva corrida; no limpia ni reconvierte datasets. | Para 10 estudios, objetivo 5 benignos/5 malignos y métricas calculables si todos completan. |
-| `docker compose exec fastapi python -m experiments.score_analysis --input /workspace/output/normal_tests/<RUN>/raw_model_predictions.csv` | Analiza scores ya calculados sin ejecutar GMIC/NYU/GLAM otra vez: ROC-AUC por modelo, distribuciones por clase, correlaciones, puntos ROC y preview de thresholds adaptativos. | Solo crea `workspace/output/analyses/score-analysis-.../`; no modifica datasets, modelos ni el run de origen. | `score_summary.json`, `model_metrics.csv`, `candidate_thresholds.csv`, `score_analysis_report.md`. |
+| `docker compose exec fastapi python -m experiments.score_analysis --input /workspace/output/normal_tests/<RUN>/raw_model_predictions.csv` | Analiza scores ya calculados sin ejecutar GMIC/NYU/GLAM otra vez: ROC-AUC por modelo, distribuciones, correlaciones, puntos ROC, métricas baseline (Sensitivity/Specificity/PPV/NPV/FPR/Balanced Accuracy) y preview de thresholds adaptativos. | Solo crea `workspace/output/analyses/score-analysis-.../`; no modifica datasets, modelos ni el run de origen. | `score_summary.json`, `model_metrics.csv`, `candidate_thresholds.csv`, `diagnostic_configurations.csv`, `diagnostic_ranking.csv`, `score_analysis_report.md`. |
 | `./scripts/analyze-scores.sh /workspace/output/normal_tests/<RUN>/raw_model_predictions.csv` | Wrapper host del análisis anterior. | Mismos outputs CPU-only; no usa GPU. | Ruta del directorio de análisis. |
-| `docker compose exec fastapi python -m experiments.run --datasets cbis_ddsm --configuration-ratio 0.30 --seed 42` | Fase de configuración experimental. Divide por paciente antes de inferir, ejecuta modelos solo sobre Configuration Set y evalúa 16 pesos × 5 thresholds adaptativos (=80) en CPU. El Final Test Set queda reservado sin scores. | `workspace/output/experiments/`; no modifica dataset. | `experiment_plan.json`, manifests config/final, score analysis, 80 configuraciones, ranking y best configuration. |
+| `docker compose exec fastapi python -m experiments.run --datasets cbis_ddsm --configuration-ratio 0.30 --seed 42` | Fase de configuración experimental. Divide por paciente antes de inferir, ejecuta modelos solo sobre Configuration Set y evalúa 16 pesos × 5 thresholds adaptativos (=80) en CPU. v0.23 selecciona pesos por ROC-AUC y threshold por Balanced Accuracy, con Sensitivity/Specificity como desempate. El Final Test Set queda reservado sin scores. | `workspace/output/experiments/`; no modifica dataset. | `experiment_plan.json`, manifests config/final, score analysis, 80 configuraciones, ranking y best configuration. |
 | `docker compose exec fastapi python -m experiments.freeze --experiment <ID>` | Congela pesos/threshold seleccionados. | Crea `frozen_configuration.yaml`; no se sobreescribe con contenido distinto. | Configuración frozen. |
 | `docker compose exec fastapi python -m experiments.final_evaluation --experiment <ID>` | Evalúa el Final Test Set reservado. | Resultados finales en el experimento; no reoptimiza. | Métricas selected vs baseline. |
 | `docker run --rm --gpus all nvidia/cudagl:10.1-devel-ubuntu18.04 nvidia-smi` | Diagnóstico de exposición GPU a Docker/WSL. | Nada persistente. | RTX visible dentro del contenedor. |
@@ -612,7 +612,7 @@ El límite `--max-runtime-minutes` se evalúa **entre chunks completos**; no mat
 
 ## 8. Prueba experimental
 
-v0.22 mantiene la separación metodológica **Configuration Set → freeze → Final Test Set**. No se deben generar scores del Final Test Set antes de congelar pesos/threshold. La política es inferir cada estudio como máximo una vez dentro del experimento: Configuration Set durante `experiments.run`; Final Test Set recién durante `final_evaluation`, con reutilización del cache si se repite ese comando.
+v0.23 mantiene la separación metodológica **Configuration Set → freeze → Final Test Set**. No se deben generar scores del Final Test Set antes de congelar pesos/threshold. La política es inferir cada estudio como máximo una vez dentro del experimento: Configuration Set durante `experiments.run`; Final Test Set recién durante `final_evaluation`, con reutilización del cache si se repite ese comando.
 
 ### 8.1 Análisis CPU de scores ya existentes
 
@@ -625,19 +625,21 @@ docker compose exec fastapi python -m experiments.score_analysis \
 
 Este comando **no ejecuta modelos ni usa GPU**. No modifica el run de origen. Escribe bajo `workspace/output/analyses/`:
 
-- `score_summary.json`: rango observado, AUC baseline, warnings y research guards.
+- `score_summary.json`: rango observado, AUC baseline, métricas threshold-dependent del baseline, warnings y research guards.
 - `model_metrics.csv`: ROC-AUC y estadísticos benign/malignant por GMIC, NYU, GLAM y ensemble baseline.
 - `score_distribution.csv`: min/quantiles/media/std por clase.
 - `model_correlations.csv`: Pearson/Spearman entre scores.
 - `roc_points.csv`: puntos de curva ROC cuando hay ambas clases.
-- `candidate_thresholds.csv`: 16×5 thresholds que resultarían de la estrategia adaptativa.
+- `candidate_thresholds.csv`: preview 16×5 de thresholds adaptativos con `threshold_source=analysis_score_quantile`; no es una selección formal.
+- `diagnostic_configurations.csv`: métricas CPU de los 80 candidatos sobre el set analizado; incluye `diagnostic_only=true` y `eligible_for_freeze=false`.
+- `diagnostic_ranking.csv`: ranking diagnóstico con la política v0.23; sirve para entender el comportamiento antes del experimento formal, no para congelar configuración.
 - `score_analysis_report.md`.
 
-v0.22 **no invierte scores con AUC < 0.5, no calibra y no entrena**; solo registra la evidencia.
+v0.23 **no invierte scores con AUC < 0.5, no calibra y no entrena**; solo registra la evidencia. Además, el análisis diagnóstico usa `threshold_source=analysis_score_quantile`; `configuration_score_quantile` queda reservado al experimento formal.
 
 ### 8.2 Thresholds adaptativos del Configuration Set
 
-La grilla fija histórica `0.40,0.45,0.50,0.55,0.60` queda documentada como legacy pero no se usa en el experimento v0.22. Para cada una de las 16 combinaciones de pesos se calculan cinco candidatos a partir de sus scores en el Configuration Set:
+La grilla fija histórica `0.40,0.45,0.50,0.55,0.60` queda documentada como legacy pero no se usa en el experimento v0.23. Para cada una de las 16 combinaciones de pesos se calculan cinco candidatos a partir de sus scores en el Configuration Set:
 
 ```text
 T01 = quantile 10%
@@ -647,7 +649,7 @@ T04 = quantile 70%
 T05 = quantile 90%
 ```
 
-La derivación usa **solo scores**, nunca `ground_truth`. Después de fijar los cinco valores se usan las etiquetas del Configuration Set para calcular TN/FP/FN/TP, Sensitivity y ROC-AUC. Por tanto siguen existiendo exactamente **16 × 5 = 80 configuraciones** y el Final Test Set no participa en la optimización.
+La derivación usa **solo scores**, nunca `ground_truth`. Después de fijar los cinco valores se usan las etiquetas del Configuration Set para calcular TN/FP/FN/TP, Sensitivity, Specificity, PPV, NPV, FPR, Accuracy, Balanced Accuracy y ROC-AUC. Por tanto siguen existiendo exactamente **16 × 5 = 80 configuraciones** y el Final Test Set no participa en la optimización.
 
 ### 8.3 Abrir el experimento formal completo
 
@@ -674,6 +676,8 @@ best_configuration.json
 configuration_report.md
 ```
 
+La política de selección v0.23 evita escoger un threshold solo porque produzca `FN=0`. Primero selecciona la combinación de pesos con mejor ROC-AUC en el Configuration Set; después elige el threshold con mayor **Balanced Accuracy**. En empates se prioriza mayor Sensitivity, luego mayor Specificity/menor FP y finalmente cercanía determinística al baseline histórico. El Final Test Set no interviene en ninguna de estas decisiones.
+
 ### 8.4 Congelar configuración
 
 ```bash
@@ -688,7 +692,7 @@ Crea `frozen_configuration.yaml`. Si ya existe con contenido diferente, el proce
 docker compose exec fastapi python -m experiments.final_evaluation --experiment <ID>
 ```
 
-Solo después del freeze se ejecutan GMIC+NYU+GLAM sobre el Final Test Set. Si `final_inference/raw_model_predictions.csv` ya existe y es compatible, v0.22 lo reutiliza en vez de volver a ejecutar los modelos. La evaluación final no cambia pesos ni threshold.
+Solo después del freeze se ejecutan GMIC+NYU+GLAM sobre el Final Test Set. Si `final_inference/raw_model_predictions.csv` ya existe y es compatible, v0.23 lo reutiliza en vez de volver a ejecutar los modelos. La evaluación final no cambia pesos ni threshold.
 
 ## 9. Configuraciones agregadas durante la implementación
 
@@ -1058,3 +1062,78 @@ v0.20 completó por primera vez 5 estudios CBIS-DDSM reales con GMIC + NYU + GLA
 ## v0.22 — análisis de scores, thresholds adaptativos y aislamiento del Final Test Set
 
 La corrida real v0.21 de 10 estudios balanceados completó 40 mamografías en ~7m22s, pero el baseline threshold 0.50 dejó 5/5 malignos como FN y produjo ROC-AUC 0.36. v0.22 no cambia ningún modelo. Añade análisis CPU de scores cacheados, reporta AUC por modelo/correlaciones/distribuciones y reemplaza la grilla experimental fija 0.40-0.60 por cinco quantiles label-independent del Configuration Set para cada peso. El Final Test Set permanece sin inferencia hasta freeze y su cache se reutiliza si `final_evaluation` se ejecuta nuevamente.
+
+
+## v0.23 — métricas de operación y selección balanceada
+
+v0.23 mantiene intactos GMIC, NYU y GLAM. Añade Specificity, PPV, NPV, FPR, Accuracy y Balanced Accuracy a la evaluación threshold-dependent; corrige `threshold_source` para distinguir análisis diagnóstico de Configuration Set; y reemplaza el selector v0.22 `min FN → Sensitivity → FP` por `ROC-AUC por pesos → Balanced Accuracy por threshold → Sensitivity → Specificity/FP`. Esto evita premiar automáticamente thresholds casi-all-positive. El aislamiento **Configuration Set → freeze → Final Test Set** se conserva sin cambios.
+
+## v0.24 — auditoría de procedencia de scores (CPU, sin reinferencia)
+
+Antes de ejecutar los 105 estudios, audite el run diagnóstico existente:
+
+```bash
+docker compose exec fastapi python -m experiments.score_provenance \
+  --run-dir /workspace/output/normal_tests/normal-20260815T195006Z
+```
+
+La auditoría reconstruye score por vista/mama/estudio, valida lateralidad y compara ROC-AUC breast-level vs study-level sin cambiar modelos, pesos, threshold ni agregación.
+
+### v0.24.2 — compatibilidad con `normal_test` chunked
+
+`score_provenance` descubre automáticamente los dos layouts reales del pipeline: ejecución directa en `<run>/model_batch/` y ejecución con `max_runtime_minutes` en `<run>/chunks/<NNNN>/model_batch/`. En modo chunked combina todos los batches, preserva el orden de NYU mediante `study_order.csv` o el `raw_model_predictions.csv` local al chunk y registra la procedencia exacta en el reporte de auditoría.
+
+
+### v0.25.0 — diagnóstico de fidelidad de entrada y agregación breast-aware
+
+Antes de ejecutar el Configuration Set completo, v0.25 agrega dos diagnósticos CPU-only:
+
+```bash
+docker compose exec fastapi python -m experiments.input_fidelity --run-dir <normal-run>
+```
+
+Audita contrato 16-bit PNG, metadata DICOM relevante para presentación y metadata producida por el crop/optimal-center oficial de GMIC/NYU/GLAM (`distance_from_starting_side`, `best_center`). No modifica imágenes ni ejecuta inferencia.
+
+```bash
+docker compose exec fastapi python -m experiments.breast_ensemble_analysis --breast-level-scores <score-provenance>/breast_level_scores.csv
+```
+
+Compara, sin cambiar producción, la agregación actual `max por modelo -> vote` contra `vote por mama -> max entre mamas`. Ambos resultados son diagnósticos y no elegibles para freeze.
+
+### v0.26.0 — contrafactual dirigido de orientación
+
+v0.25 confirmó 40/40 PNG 16-bit grayscale y 40/40 DICOM sin metadata VOI/Window/Rescale que requiera revisión, pero localizó `distance_from_starting_side != 0` en las cuatro vistas de estudios concretos. El upstream NYU/GMIC documenta esa señal como útil para detectar un posible `horizontal_flip` incorrecto según el dataset.
+
+v0.26 ejecuta una prueba dirigida únicamente sobre estudios con las 4 vistas afectadas. No modifica el dataset ni el run original: crea un batch diagnóstico, invierte solo `horizontal_flip`, reejecuta GMIC/NYU/GLAM para esos estudios y compara la geometría del preprocessing y los scores.
+
+```bash
+docker compose exec fastapi python -m experiments.orientation_counterfactual \
+  --run-dir /workspace/output/normal_tests/normal-20260815T195006Z
+```
+
+La decisión de orientación se basa primero en la evidencia geométrica upstream (`distance_from_starting_side`); cualquier cambio de ROC-AUC se registra solo como impacto secundario/post-hoc y no es elegible para freeze.
+
+
+## v0.27 automatic orientation resolution
+
+Before classifier inference, v0.27 runs the pinned NYU crop + optimal-center preprocessing only (no classifier) as a label-independent orientation preflight. A study is considered for correction only when all four views have non-zero `distance_from_starting_side`; the study-level `horizontal_flip` toggle is accepted only when the counterfactual makes all four distances zero. Ground truth, model scores and AUC are not used. Evidence is persisted under `orientation_resolution/`. The same fixed rule is applied to Configuration and, only after freeze, Final Test inputs.
+
+
+## v0.27.1 hotfix
+
+The label-independent NYU `PREPROCESS_ONLY` endpoint now exports the upstream repository root (`/home/bcc/breast_cancer_classifier`) in `PYTHONPATH` before invoking `src/cropping/crop_mammogram.py` and `src/optimal_centers/get_optimal_centers.py` directly. This follows the upstream NYU requirement for individual-script execution and fixes the v0.27.0 `ModuleNotFoundError: No module named 'src'` seen before orientation preprocessing began. No model weights, images, labels, orientation policy, ensemble weights, thresholds, or aggregation rules are changed.
+
+## v0.28 upstream reference runtime validation
+
+After CBIS-DDSM input fidelity, aggregation and orientation diagnostics, v0.28 adds a separate runtime-reproduction gate using the official four-exam sample bundled by the NYU mammography metarepository. Run:
+
+```bash
+docker compose exec fastapi python -m experiments.upstream_reference_validation
+```
+
+The command runs the existing Blackwell GMIC/NYU/GLAM images on `sample_data/`, computes image/breast ROC-AUC and AUPRC using the metarepository label contract, and compares them with the reproduction references published upstream. It does not use CBIS-DDSM, ensemble weights or thresholds and is not eligible for freeze.
+
+
+## v0.28.2 GLAM runtime differential
+
+When the official upstream reference validation passes GMIC/NYU but fails GLAM, run `python -m experiments.glam_runtime_differential`. It executes the pinned upstream GLAM PyTorch 1.1 runtime on CPU and the Blackwell PyTorch 2.7/CUDA 12.8 runtime on the same official 4-exam sample, then compares raw image scores, ordering, AUROC and AUPRC. The legacy path changes only the matplotlib backend from TkAgg to Agg for headless execution; it does not alter model architecture, checkpoint or intended inference semantics.

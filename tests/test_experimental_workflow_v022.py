@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import pandas as pd
 import mammography_agent.pipeline as pipeline
 
@@ -35,6 +36,11 @@ def test_experimental_flow_keeps_final_isolated_and_reuses_final_cache(tmp_path,
     monkeypatch.setattr(pipeline,"load_datasets",lambda datasets,samples=None:_dataset().head(samples) if samples else _dataset())
     monkeypatch.setattr(pipeline,"_infer_three",_fake_infer_factory(calls))
     monkeypatch.setattr(pipeline,"audit",lambda *a,**k:None)
+    def fake_resolve(frame, output_dir, *args, **kwargs):
+        out=Path(output_dir); out.mkdir(parents=True, exist_ok=True)
+        (out/"orientation_policy_summary.json").write_text(json.dumps({"policy_id":pipeline.ORIENTATION_POLICY_ID}), encoding="utf-8")
+        return frame.copy()
+    monkeypatch.setattr(pipeline,"resolve_orientation",fake_resolve)
     monkeypatch.setattr(pipeline,"save_run",lambda *a,**k:None)
 
     run_dir=pipeline.experimental_test(["unit"],configuration_ratio=.30,seed=42)
@@ -45,6 +51,7 @@ def test_experimental_flow_keeps_final_isolated_and_reuses_final_cache(tmp_path,
     assert not (run_dir/"final_inference").exists()
     assert len(pd.read_csv(run_dir/"all_configurations.csv"))==80
     assert (run_dir/"configuration_score_analysis"/"score_summary.json").exists()
+    assert (run_dir/"configuration_score_analysis"/"diagnostic_configurations.csv").exists()
 
     pipeline.freeze_experiment("experiment-v022-unit")
     pipeline.final_evaluation("experiment-v022-unit")
@@ -52,6 +59,8 @@ def test_experimental_flow_keeps_final_isolated_and_reuses_final_cache(tmp_path,
     call_count=len(calls)
     assert (run_dir/"final_score_analysis"/"score_summary.json").exists()
     assert not (run_dir/"final_score_analysis"/"candidate_thresholds.csv").exists()
+    assert not (run_dir/"final_score_analysis"/"diagnostic_configurations.csv").exists()
+    assert not (run_dir/"final_score_analysis"/"diagnostic_ranking.csv").exists()
 
     # Second final evaluation must reuse cached raw scores, not invoke models again.
     pipeline.final_evaluation("experiment-v022-unit")

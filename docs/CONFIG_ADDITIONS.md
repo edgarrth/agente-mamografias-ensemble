@@ -333,7 +333,7 @@ Los parches de compatibilidad GPU se describen ahora dentro del bloque `gpu_comp
 
 ## ADD-058 — container_version_exposure — **active**
 
-**Valor:** `VERSION` existe en `/app/VERSION` y `/runner/VERSION`; `/health`/`/doctor` exponen la versión actual (`0.22.0` en este paquete).
+**Valor:** `VERSION` existe en `/app/VERSION` y `/runner/VERSION`; `/health`/`/doctor` exponen la versión actual (`0.23.0` en este paquete).
 
 **Por qué:** permite verificar exactamente qué build está corriendo y elimina versiones hardcodeadas obsoletas.
 
@@ -448,3 +448,10 @@ FastAPI y Model Runner usan `lifespan` para inicialización de startup en lugar 
 **Valor:** `configuration_score_analysis/` y `final_score_analysis/` quedan dentro del experimento.
 
 **Razón:** las decisiones de peso/threshold y la evaluación final deben ser auditables desde scores brutos y métricas por modelo.
+
+
+## ADD-081 — orientation_counterfactual_diagnostic — **active**
+
+**Valor:** alterna `horizontal_flip` únicamente en estudios donde las cuatro vistas presentan `distance_from_starting_side != 0`, reejecutando los tres modelos solo para esos estudios y comparando evidencia geométrica y efecto secundario sobre scores.
+
+**Por qué:** v0.25 localizó la señal de orientación en estudios completos; la geometría del preprocessing upstream es el criterio primario y el cambio de AUC permanece diagnóstico/post-hoc.

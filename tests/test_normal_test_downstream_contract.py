@@ -20,6 +20,7 @@ def test_normal_test_completes_voting_metrics_and_reports_after_three_model_scor
     monkeypatch.setattr(pipeline, "_infer_three", lambda frame, run_dir, run_id: scores.copy())
     monkeypatch.setattr(pipeline, "save_run", lambda *args, **kwargs: None)
     monkeypatch.setattr(pipeline, "audit", lambda *args, **kwargs: None)
+    monkeypatch.setattr(pipeline,"resolve_orientation",lambda frame,*a,**k: frame.copy())
 
     run_dir = pipeline.normal_test(["cbis_ddsm"], samples=2, max_runtime_minutes=None)
 

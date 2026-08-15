@@ -1,4 +1,4 @@
-# Implementation status — v0.22
+# Implementation status — v0.23
 
 ## Validado en workstation objetivo
 
@@ -57,3 +57,8 @@ v0.20 quedó validado end-to-end en la workstation: 5 estudios CBIS-DDSM complet
 ## v0.22
 
 La workstation validó v0.21 con 10 estudios CBIS-DDSM balanceados (5 benignos/5 malignos): los tres modelos, XAI y Soft Voting terminaron correctamente en 441.8 s. El resultado baseline fue TN=5, FP=0, FN=5, TP=0, Sensitivity=0 y ROC-AUC=0.36; los scores observados quedaron muy por debajo del threshold 0.50. v0.22 no modifica modelos: añade análisis reproducible de scores cacheados y reemplaza la grilla experimental absoluta 0.40-0.60 por cinco quantiles label-independent derivados del Configuration Set para cada combinación de pesos. El Final Test Set se mantiene reservado hasta freeze y su inferencia se reutiliza si ya existe.
+
+
+## v0.23
+
+v0.23 conserva modelos/dataset y corrige la evaluación experimental: se incorporan Specificity, PPV, NPV, FPR, Accuracy y Balanced Accuracy. La selección ya no minimiza FN antes que cualquier otro criterio; ahora escoge pesos por ROC-AUC y threshold por Balanced Accuracy, usando Sensitivity y Specificity como desempates. `threshold_source` distingue análisis diagnóstico (`analysis_score_quantile`) de Configuration Set (`configuration_score_quantile`). El Final Test Set sigue completamente aislado hasta freeze.

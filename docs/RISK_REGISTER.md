@@ -14,3 +14,4 @@
 | Upstream Dockerfile changes after compatibility rule was defined | Patch could target the wrong runtime definition | Exact first-line drift guard; fail explicitly and require a new reviewed project version |
 | XAI unavailable | Reduced interpretability | Report missing artifact; never create synthetic heatmap |
 | Dataset incompatible with four-view NYU input | CBIS-DDSM cases may not satisfy the current ensemble input contract | `dataset_pipeline.inspect` measures complete L-CC/R-CC/L-MLO/R-MLO studies first; incomplete cases are rejected and never synthesized |
+| Small diagnostic sample (for example 5 benign / 5 malignant) | ROC-AUC point estimates change materially when only a few positive-negative pairs change order; apparent version-to-version gains may be noise | Report stratified-bootstrap 95% CI, pairwise AUC step, keep diagnostic runs ineligible for freeze, and defer conclusions to the preregistered Configuration/Final Test workflow |

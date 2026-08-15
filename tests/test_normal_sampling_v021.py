@@ -49,6 +49,7 @@ def test_normal_test_persists_sampling_and_run_summary(monkeypatch,tmp_path):
     monkeypatch.setattr(pipeline,"load_datasets",lambda datasets,samples=None:df.copy())
     monkeypatch.setattr(pipeline,"save_run",lambda *a,**k:None)
     monkeypatch.setattr(pipeline,"audit",lambda *a,**k:None)
+    monkeypatch.setattr(pipeline,"resolve_orientation",lambda frame,*a,**k: frame.copy())
 
     def fake_infer(frame,run_dir,run_id):
         out=frame[["study_id","patient_id","ground_truth","dataset_source"]].copy()

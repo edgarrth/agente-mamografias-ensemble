@@ -23,10 +23,10 @@ weights:
   W15: [0.20, 0.60, 0.20]
   W16: [0.20, 0.20, 0.60]
 
-# v0.22 replaces the obsolete fixed 0.40-0.60 threshold grid. The five
-# candidates are derived separately for each weight combination from score
-# quantiles in the Configuration Set. Ground-truth labels are NOT used to
-# construct these candidate values; labels are used only to evaluate them.
+# v0.22+ replaces the obsolete fixed 0.40-0.60 threshold grid. Five candidates
+# are derived separately for each weight combination from score quantiles in the
+# Configuration Set. Ground-truth labels are NOT used to construct candidate
+# thresholds; labels are used only afterwards to evaluate each candidate.
 threshold_strategy:
   mode: score_quantiles
   derive_per_weight: true
@@ -45,11 +45,15 @@ legacy_thresholds_v021_not_used:
   T04: 0.55
   T05: 0.60
 
+# v0.23 selection avoids the previous "minimum FN first" policy, which can
+# reward an almost-all-positive classifier. ROC-AUC selects the weighting;
+# Balanced Accuracy selects the operating point; Sensitivity/Specificity break ties.
 selection:
-  sensitivity_tolerance: 0.01
+  balanced_accuracy_tolerance: 0.00
   order:
     - highest_roc_auc_by_weights
-    - lowest_false_negatives
+    - highest_balanced_accuracy
     - highest_sensitivity
-    - lowest_false_positives_within_tolerance
+    - highest_specificity
+    - lowest_false_positives
     - nearest_baseline

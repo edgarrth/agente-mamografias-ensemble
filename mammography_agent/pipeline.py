@@ -9,11 +9,12 @@ from .model_client import run_model
 from .prediction_parser import parse_image_level, parse_nyu
 from .ensemble.soft_voting import vote
 from .ensemble.metrics import evaluate
-from .ensemble.experiment import all_configurations, select_configuration
+from .ensemble.experiment import all_configurations, ranking, select_configuration
 from .reporting import write_json, write_report
 from .storage import save_run
 from .logging_utils import audit
 from .score_analysis import analyze_score_frame, threshold_strategy_config
+from .orientation_policy import resolve_orientation, POLICY_ID as ORIENTATION_POLICY_ID
 
 MODELS=["gmic","nyu","glam"]
 VIEW_COLUMNS=["l_cc","r_cc","l_mlo","r_mlo"]
@@ -183,8 +184,10 @@ def normal_test(datasets, samples=None, weights=None, threshold=None, config_fil
         available_df=load_datasets(datasets)
         df,sampling_info=_sample_normal_dataset(available_df,samples,sampling,seed)
         if df.empty: raise RuntimeError("Sampling selected zero studies")
+        df.to_csv(run_dir/"selected_studies_before_orientation.csv",index=False)
+        df=resolve_orientation(df,run_dir/"orientation_resolution",run_id)
         df.to_csv(run_dir/"selected_studies.csv",index=False)
-        audit("NORMAL_TEST_SAMPLING_SELECTED",run_id=run_id,**sampling_info)
+        audit("NORMAL_TEST_SAMPLING_SELECTED",run_id=run_id,orientation_policy=ORIENTATION_POLICY_ID,**sampling_info)
         w,t,source=_resolve_config(weights,threshold,config_file)
         status="SUCCESS"
         if max_runtime_minutes is None:
@@ -221,6 +224,7 @@ def normal_test(datasets, samples=None, weights=None, threshold=None, config_fil
             "requested_class_distribution":sampling_info["requested_class_distribution"],
             "actual_class_distribution":_class_distribution(pred),
             "max_runtime_minutes":max_runtime_minutes,"overall_elapsed_seconds":overall_elapsed,
+            "orientation_policy":ORIENTATION_POLICY_ID,
         }
         write_json(run_dir/"run_summary.json",run_summary)
         write_report(run_dir/"normal_test_report.md","Normal Test Report",{**run_summary,"config_source":source,**m})
@@ -237,7 +241,10 @@ def experimental_test(datasets, samples=None, configuration_ratio=0.30, seed=42)
     patient=df.groupby("patient_id").ground_truth.max().reset_index()
     cp,fp=train_test_split(patient,train_size=float(configuration_ratio),random_state=int(seed),stratify=patient.ground_truth if patient.ground_truth.nunique()>1 else None)
     config_df=df[df.patient_id.isin(cp.patient_id)].copy(); final_df=df[df.patient_id.isin(fp.patient_id)].copy()
+    config_df.to_csv(run_dir/"configuration_set_manifest_before_orientation.csv",index=False)
+    config_df=resolve_orientation(config_df,run_dir/"configuration_orientation",f"{run_id}-configuration")
     config_df.to_csv(run_dir/"configuration_set_manifest.csv",index=False)
+    # Final Test Set remains untouched until after freeze. Orientation is resolved deterministically at final evaluation time.
     final_df.to_csv(run_dir/"final_test_manifest.csv",index=False)
     write_json(run_dir/"experiment_plan.json",{
         "run_id":run_id,"seed":int(seed),"configuration_ratio":float(configuration_ratio),
@@ -245,18 +252,25 @@ def experimental_test(datasets, samples=None, configuration_ratio=0.30, seed=42)
         "configuration_inference_before_freeze":True,"final_inference_before_freeze":False,
         "inference_policy":"Each study is inferred at most once within this experiment; final-test scores are created only after freeze and reused on repeated final_evaluation calls.",
         "threshold_policy":"Five label-independent score quantiles are derived per weight combination from Configuration Set scores only.",
+        "selection_policy":"Highest ROC-AUC by weights -> highest Balanced Accuracy by threshold -> Sensitivity -> Specificity/FP -> baseline distance.",
+        "orientation_policy":ORIENTATION_POLICY_ID,
+        "orientation_policy_ground_truth_used":False,
+        "final_orientation_resolution_before_freeze":False,
     })
     # Critical methodological boundary: only Configuration Set is inferred before freeze.
     scores=_infer_three(config_df,run_dir/"configuration_inference",run_id)
     scores.to_csv(run_dir/"configuration_set_predictions.csv",index=False)
     analyze_score_frame(scores, run_dir/"configuration_score_analysis", source=str(run_dir/"configuration_set_predictions.csv"))
     results=all_configurations(scores); results.to_csv(run_dir/"all_configurations.csv",index=False)
-    rank=results.sort_values(["roc_auc","fn","sensitivity","fp"],ascending=[False,True,False,True]); rank.to_csv(run_dir/"ranking.csv",index=False)
+    rank=ranking(results); rank.to_csv(run_dir/"ranking.csv",index=False)
     sel=select_configuration(results); write_json(run_dir/"best_configuration.json",sel.to_dict())
     write_report(run_dir/"configuration_report.md","Experimental Configuration Report",{
         "run_id":run_id,"configuration_studies":len(config_df),"final_test_reserved":len(final_df),
         "configurations":80,"threshold_strategy":threshold_strategy_config(),
         "selected_weight_id":sel.weight_id,"selected_threshold":sel.threshold,
+        "selected_roc_auc":sel.roc_auc,"selected_balanced_accuracy":sel.balanced_accuracy,
+        "selected_sensitivity":sel.sensitivity,"selected_specificity":sel.specificity,
+        "selected_fp":int(sel.fp),"selected_fn":int(sel.fn),
         "next_step":f"python -m experiments.freeze --experiment {run_id}"})
     save_run(run_id,"experimental_configuration","CONFIGURATION_SELECTED",str(run_dir))
     audit("EXPERIMENT_CONFIGURATION_COMPLETED",run_id=run_id,selected_weight_id=sel.weight_id,threshold=float(sel.threshold))
@@ -271,7 +285,7 @@ def freeze_experiment(experiment_id: str) -> Path:
     frozen={"source_experiment":experiment_id,
             "weights":{"gmic":float(sel["w_gmic"]),"nyu":float(sel["w_nyu"]),"glam":float(sel["w_glam"])},
             "threshold":float(sel["threshold"]),
-            "selection_policy":"ROC-AUC by weights -> FN/Sensitivity -> FP within tolerance -> baseline distance",
+            "selection_policy":"ROC-AUC by weights -> Balanced Accuracy -> Sensitivity -> Specificity/FP -> baseline distance",
             "frozen":True}
     path=run_dir/"frozen_configuration.yaml"
     if path.exists():
@@ -292,14 +306,23 @@ def final_evaluation(experiment_id: str) -> Path:
     audit("FINAL_TEST_STARTED",experiment_id=experiment_id,studies=len(final_df))
     final_inference_dir=run_dir/"final_inference"
     cached_scores=final_inference_dir/"raw_model_predictions.csv"
+    orientation_marker=final_inference_dir/"orientation_resolution"/"orientation_policy_summary.json"
     if cached_scores.exists():
+        if not orientation_marker.exists():
+            raise RuntimeError("Existing final inference cache predates the required v0.27 orientation policy; refusing silent reuse")
+        marker=json.loads(orientation_marker.read_text(encoding="utf-8"))
+        if marker.get("policy_id") != ORIENTATION_POLICY_ID:
+            raise RuntimeError("Existing final inference cache uses a different orientation policy; refusing silent reuse")
         scores=pd.read_csv(cached_scores)
         required={"study_id","patient_id","ground_truth","dataset_source","gmic_score","nyu_score","glam_score"}
         if not required.issubset(scores.columns) or len(scores)!=len(final_df):
             raise RuntimeError("Existing final inference cache is incomplete/incompatible; refusing silent re-inference")
         audit("FINAL_TEST_SCORES_REUSED",experiment_id=experiment_id,studies=len(scores),path=str(cached_scores))
     else:
-        scores=_infer_three(final_df,final_inference_dir,f"{experiment_id}-final")
+        final_df.to_csv(run_dir/"final_test_manifest_before_orientation.csv",index=False)
+        resolved_final=resolve_orientation(final_df,final_inference_dir/"orientation_resolution",f"{experiment_id}-final")
+        resolved_final.to_csv(run_dir/"final_test_manifest_resolved.csv",index=False)
+        scores=_infer_three(resolved_final,final_inference_dir,f"{experiment_id}-final")
     w=frozen["weights"]; t=float(frozen["threshold"])
     selected_score=scores.gmic_score*w["gmic"]+scores.nyu_score*w["nyu"]+scores.glam_score*w["glam"]
     selected_metrics=evaluate(scores.ground_truth,selected_score,t)

@@ -25,7 +25,13 @@ def log_configuration_additions():
     with path.open("w",encoding="utf-8") as fh:
         fh.write("Configuration additions required by implementation\n")
         fh.write("These entries do not add models or training.\n\n")
-        for x in cfg.get("additions",[]):
+        for index, x in enumerate(cfg.get("additions", []), start=1):
+            required = ("id", "name", "value", "reason")
+            missing = [key for key in required if key not in x]
+            if missing:
+                raise ValueError(
+                    f"Invalid config_additions.yaml entry #{index}: missing required field(s): {', '.join(missing)}"
+                )
             status = x.get("status", "active")
             superseded = f" | superseded_by={x.get('superseded_by')}" if x.get("superseded_by") else ""
             fh.write(f"{x['id']} | {x['name']} | {x['value']} | status={status}{superseded}\nWHY: {x['reason']}\n\n")

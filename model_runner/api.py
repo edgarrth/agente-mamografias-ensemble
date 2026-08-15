@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import shutil
+import shlex
 import subprocess
 import threading
 import time
@@ -29,7 +30,7 @@ GPU = os.getenv("GPU_NUMBER", "0")
 BOOTSTRAP_MODE = os.getenv("MODEL_BOOTSTRAP_MODE", "lazy").lower()
 RESOURCE_SAMPLE_SECONDS = float(os.getenv("RESOURCE_SAMPLE_SECONDS", "2"))
 
-APP_VERSION = "0.22.0"
+APP_VERSION = "0.28.2"
 
 CONSOLE_LOG = logging.getLogger("mammography-model-runner")
 if not CONSOLE_LOG.handlers:
@@ -45,6 +46,7 @@ _CONSOLE_EVENT_EXACT = {
     "MODEL_IMAGE_BUILD_STARTED", "MODEL_IMAGE_BUILD_COMPLETED",
     "GPU_MODEL_IMAGE_BUILD_STARTED", "GPU_MODEL_IMAGE_BUILD_COMPLETED",
     "GPU_MODEL_PROBE_FAILED", "MODEL_SMOKE_FAILED",
+    "MODEL_PREPROCESS_STARTED", "MODEL_PREPROCESS_COMPLETED", "MODEL_PREPROCESS_FAILED",
 }
 
 def _console_event(event: str) -> bool:
@@ -709,6 +711,14 @@ class RunRequest(BaseModel):
     device: str | None = None
 
 
+class PreprocessRequest(BaseModel):
+    run_id: str
+    image_dir: str
+    data_pickle: str
+    preprocessed_dir: str
+
+
+
 def validate_workspace_path(value: str) -> Path:
     p = Path(value).resolve()
     root = WORKSPACE.resolve()
@@ -836,6 +846,171 @@ def _run_real_unlocked(model: str, req: RunRequest, device: str):
         subprocess.run(["docker", "rm", "-f", child_container], capture_output=True, text=True)
 
 
+
+
+def _run_glam_legacy_cpu_reference_unlocked(req: RunRequest):
+    """Run the pinned upstream GLAM image on CPU with PyTorch 1.1.
+
+    This is a reproduction differential, not a production path.  The only source
+    edit performed inside the ephemeral child container is TkAgg -> Agg so the
+    historical script can run headlessly.  Model source commit, architecture,
+    checkpoint, preprocessing and numerical framework version remain upstream.
+    """
+    model = "glam"
+    ensure_meta()
+    info = ensure_image(model)
+    selected_image = image_tag(model)
+    image_dir = validate_workspace_path(req.image_dir)
+    data = validate_workspace_path(req.data_pickle)
+    out = validate_workspace_path(req.output_file)
+    pre = validate_workspace_path(req.preprocessed_dir)
+    if not image_dir.is_dir() or not data.is_file():
+        raise FileNotFoundError("Input images/data.pkl missing")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    pre.mkdir(parents=True, exist_ok=True)
+    os.chmod(out.parent, 0o777)
+    os.chmod(pre, 0o777)
+
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", req.run_id)[-72:]
+    child_container = f"mammography-legacy-cpu-glam-{safe}".lower()
+    upstream = spec_for(model)["upstream_model_name"]
+    src_predict = META / "models" / upstream / "predict"
+    pred = WORKSPACE / "runtime" / "predict_overrides" / safe / "glam_legacy_cpu"
+    if pred.exists():
+        shutil.rmtree(pred)
+    shutil.copytree(src_predict, pred)
+    target = predict_path(model)
+    args = [
+        "docker", "run", "-d", "--name", child_container,
+        "--volumes-from", ANCHOR, "--network", "none",
+        selected_image, "bash", "-lc", "trap : TERM INT; sleep infinity & wait",
+    ]
+    log("GLAM_LEGACY_CPU_STARTED", run_id=req.run_id, image=selected_image)
+    try:
+        sh(args, timeout=60, model=model)
+        # Headless-only compatibility change.  Do not alter inference semantics.
+        sh([
+            "docker", "exec", "-u", "root", child_container, "bash", "-lc",
+            "sed -i 's/matplotlib.use(\"TkAgg\")/matplotlib.use(\"Agg\")/' "
+            "/home/glam/GLAM/src/scripts/run_model.py",
+        ], model=model)
+        sh(["docker", "cp", f"{pred}/.", f"{child_container}:{target}"], model=model)
+        cmd = [
+            "docker", "exec", "-w", target, child_container, "bash", "predict.sh",
+            str(data), str(image_dir), str(out), safe, "cpu", str(pre),
+        ]
+        stdout, resource_metrics = exec_with_metrics(child_container, cmd, "cpu")
+        if not out.exists() or out.stat().st_size == 0:
+            raise RuntimeError(f"Expected legacy GLAM prediction CSV was not produced: {out}")
+        payload = _run_success_payload(
+            info=info,
+            output_file=str(out),
+            xai=[],
+            resource_metrics=resource_metrics,
+            stdout=stdout,
+        )
+        payload.update({
+            "diagnostic_runtime": "legacy_cpu_torch1.1",
+            "device": "cpu",
+            "headless_only_patch": "matplotlib TkAgg -> Agg",
+            "model_source_changed": False,
+            "model_weights_changed": False,
+            "inference_semantics_intentionally_changed": False,
+        })
+        return payload
+    finally:
+        subprocess.run(["docker", "rm", "-f", child_container], capture_output=True, text=True)
+
+
+def _preprocess_only_unlocked(model: str, req: PreprocessRequest):
+    """Run only the upstream crop + optimal-center stages, without classifier inference.
+
+    v0.27 uses this exact upstream preprocessing as a label-independent orientation
+    preflight.  It intentionally runs inside the same pinned model image/source tree
+    used for inference.  No checkpoint is loaded and no prediction is produced.
+    """
+    model = model.strip().lower()
+    spec_for(model)
+    image_dir = validate_workspace_path(req.image_dir)
+    data = validate_workspace_path(req.data_pickle)
+    pre = validate_workspace_path(req.preprocessed_dir)
+    if not image_dir.is_dir() or not data.is_file():
+        raise FileNotFoundError("Input images/data.pkl missing")
+    pre.mkdir(parents=True, exist_ok=True)
+    os.chmod(pre, 0o777)
+
+    # Prefer the validated GPU-compatibility image when available because it is the
+    # exact runtime used by the thesis inference.  Preprocessing itself remains CPU-only.
+    if gpu_compatibility_for(model).get("enabled"):
+        info = ensure_gpu_image(model)
+        selected_image = gpu_image_tag(model)
+    else:
+        info = ensure_image(model)
+        selected_image = image_tag(model)
+
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", req.run_id)[-72:]
+    child_container = f"mammography-preprocess-{model}-{safe}".lower()
+    cropped = pre / f"{safe}_cropped_images"
+    cropped_list = cropped / "cropped_exam_list.pkl"
+    center_data = pre / f"{safe}_center_data.pkl"
+    if cropped.exists():
+        shutil.rmtree(cropped)
+    if center_data.exists():
+        center_data.unlink()
+
+    target = predict_path(model)
+    args = [
+        "docker", "run", "-d", "--name", child_container,
+        "--volumes-from", ANCHOR, "--network", "none",
+        selected_image, "bash", "-lc", "trap : TERM INT; sleep infinity & wait",
+    ]
+    log("MODEL_PREPROCESS_STARTED", model=model, run_id=req.run_id, image=selected_image,
+        image_dir=str(image_dir), preprocessed_dir=str(pre), input_images=len(list(image_dir.glob("*.png"))))
+    try:
+        sh(args, timeout=60, model=model)
+        # The upstream NYU repository explicitly requires its repository root in
+        # PYTHONPATH when the individual preprocessing scripts are invoked directly.
+        # Running ``python3 src/cropping/crop_mammogram.py`` sets sys.path[0] to the
+        # script directory (src/cropping), so ``import src...`` otherwise fails even
+        # when Docker's working directory is the repository root.  The normal upstream
+        # run.sh/predict path masks this detail; PREPROCESS_ONLY must preserve it.
+        repo_pythonpath = "/home/bcc/breast_cancer_classifier" if model == "nyu" else target
+        command = " && ".join([
+            f"export PYTHONPATH={shlex.quote(repo_pythonpath)}${{PYTHONPATH:+:$PYTHONPATH}}",
+            "python3 src/cropping/crop_mammogram.py "
+            f"--input-data-folder {shlex.quote(str(image_dir))} "
+            f"--output-data-folder {shlex.quote(str(cropped))} "
+            f"--exam-list-path {shlex.quote(str(data))} "
+            f"--cropped-exam-list-path {shlex.quote(str(cropped_list))} --num-processes 10",
+            "python3 src/optimal_centers/get_optimal_centers.py "
+            f"--cropped-exam-list-path {shlex.quote(str(cropped_list))} "
+            f"--data-prefix {shlex.quote(str(cropped))} "
+            f"--output-exam-list-path {shlex.quote(str(center_data))} --num-processes 10",
+        ])
+        stdout, metrics = exec_with_metrics(
+            child_container,
+            ["docker", "exec", "-w", target, child_container, "bash", "-lc", command],
+            "cpu",
+        )
+        if not center_data.is_file():
+            raise RuntimeError(f"Expected preprocessing metadata was not produced: {center_data}")
+        log("MODEL_PREPROCESS_COMPLETED", model=model, run_id=req.run_id,
+            center_data=str(center_data), elapsed_seconds=metrics.get("elapsed_seconds"))
+        return {
+            **info,
+            "status": "SUCCESS",
+            "operation": "PREPROCESS_ONLY",
+            "classifier_inference_performed": False,
+            "center_data": str(center_data),
+            "cropped_exam_list": str(cropped_list),
+            "cropped_images": str(cropped),
+            "resource_metrics": metrics,
+            "stdout_tail": stdout[-2000:],
+        }
+    finally:
+        subprocess.run(["docker", "rm", "-f", child_container], capture_output=True, text=True)
+
+
 def model_info(model: str) -> dict:
     model = model.strip().lower()
     spec = spec_for(model)
@@ -942,6 +1117,16 @@ def models():
     return [model_info(m) for m in sorted(configured_models())]
 
 
+@app.post("/meta/ensure")
+def ensure_metarepository_endpoint():
+    try:
+        commit = ensure_meta()
+        return {"status": "READY", "path": str(META), "resolved_commit": commit}
+    except Exception as exc:
+        log("METAREPOSITORY_ENSURE_FAILED", error=str(exc))
+        raise HTTPException(500, str(exc))
+
+
 @app.get("/models/{model}/info")
 def info(model: str):
     try:
@@ -1002,6 +1187,25 @@ def smoke_test(model: str):
         )
     except Exception as exc:
         log("MODEL_SMOKE_FAILED", model=model, error=str(exc))
+        raise HTTPException(500, str(exc))
+
+
+@app.post("/diagnostics/glam-legacy-cpu")
+def glam_legacy_cpu_reference(req: RunRequest):
+    try:
+        return _run_glam_legacy_cpu_reference_unlocked(req)
+    except Exception as exc:
+        log("GLAM_LEGACY_CPU_FAILED", run_id=req.run_id, error=str(exc))
+        raise HTTPException(500, str(exc))
+
+
+@app.post("/models/{model}/preprocess")
+def preprocess(model: str, req: PreprocessRequest):
+    try:
+        spec_for(model)
+        return _preprocess_only_unlocked(model, req)
+    except Exception as exc:
+        log("MODEL_PREPROCESS_FAILED", model=model, run_id=req.run_id, error=str(exc))
         raise HTTPException(500, str(exc))
 
 
