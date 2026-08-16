@@ -234,3 +234,224 @@ Se incorpora `mammography-model-nyu:blackwell-cu128` como runtime GPU separado p
 ## ADD-039 — `model_owned_gpu_compatibility_patch_audit`
 
 Los parches de compatibilidad GPU se describen ahora dentro del bloque `gpu_compatibility` de cada modelo. Esto evita que la auditoría genérica del Model Runner atribuya a NYU un parche específico de GMIC y conserva trazabilidad precisa por runtime.
+
+## ADD-042 — cbis_ddsm_official_tcia_metadata_adapter — **active**
+
+**Valor:** ingestión recursiva de los cuatro CSV oficiales de CBIS-DDSM más el árbol DICOM descargado con TCIA/NBIA.
+
+**Por qué:** elimina la construcción manual de `source_manifest.csv`. El adapter deriva paciente, lateralidad, vista y patología desde los metadatos oficiales y resuelve las rutas contra los DICOM descargados.
+
+## ADD-043 — cbis_ddsm_pathology_only_ground_truth — **active**
+
+**Valor:** `MALIGNANT=1`, `BENIGN=0`, `BENIGN_WITHOUT_CALLBACK=0`; patologías desconocidas se rechazan; BI-RADS no se convierte a etiqueta de cáncer.
+
+**Por qué:** la clasificación de cáncer debe usar el ground truth patológico del dataset y no una regla heurística basada en assessment/BI-RADS.
+
+## ADD-044 — cbis_ddsm_recursive_raw_layout — **active**
+
+**Valor:** cualquier jerarquía generada por NBIA es válida debajo de `/workspace/datasets/raw/cbis_ddsm`; los CSV oficiales se descubren recursivamente.
+
+**Por qué:** evita aplanar o renombrar manualmente cientos de GB. El adapter usa coincidencia de sufijos/UID y, cuando hace falta, un índice DICOM de cabeceras cacheado.
+
+## ADD-045 — cbis_ddsm_four_view_ensemble_gate — **active**
+
+**Valor:** el ensemble actual exige `L-CC`, `R-CC`, `L-MLO`, `R-MLO`; estudios incompletos se registran y excluyen, sin duplicar ni sintetizar vistas.
+
+**Por qué:** el flujo exam-level del DMV-CNN/NYU seleccionado requiere las cuatro vistas estándar. Completar vistas artificialmente invalidaría la entrada científica.
+
+## ADD-046 — cbis_ddsm_inspection_artifacts — **active**
+
+**Valor:** catálogos de metadata/vistas, reporte de filas no resueltas, reporte de estudios incompletos, `source_manifest.csv` autogenerado e índice DICOM cacheado.
+
+**Por qué:** permite auditar exactamente cómo se transformó el release oficial antes de convertir imágenes o ejecutar inferencia.
+
+## ADD-047 — validated_three_gpu_env_example — **active**
+
+**Valor:** `.env.example` selecciona GMIC, NYU y GLAM en GPU con `ALLOW_GPU=true`, `GPU_NUMBER=0`; el perfil técnico Blackwell sigue exclusivamente en `config/models.yaml`.
+
+**Por qué:** los tres runtimes ya fueron comprobados en la workstation objetivo y el ejemplo debe reflejar el estado realmente probado.
+
+## ADD-048 — cbis_ddsm_metadata_preflight_guard — **active**
+
+**Valor:** `inspect` y `prepare` devuelven `METADATA_REQUIRED` con archivos faltantes e instrucciones; no construyen el índice DICOM mientras la metadata oficial esté incompleta.
+
+**Por qué:** evita tracebacks y trabajo costoso inútil cuando NBIA ha descargado imágenes pero aún faltan los CSV separados de TCIA.
+
+## ADD-049 — cbis_ddsm_metadata_filename_aliases — **active**
+
+**Valor:** se reconocen los nombres canónicos y aliases `Mass/Calc-Training/Test-Description.csv`.
+
+**Por qué:** desacopla el adapter del nombre de descarga sin modificar contenido, etiquetas ni procedencia de la metadata.
+
+## ADD-050 — cbis_ddsm_non_destructive_dicom_download_policy — **active**
+
+**Valor:** `dataset_pipeline.download` nunca transfiere bytes DICOM. Si el árbol raw ya existe, se reutiliza; si falta, devuelve `DICOM_DOWNLOAD_REQUIRED`.
+
+**Por qué:** evita duplicar ~163 GB, consumir ancho de banda o sobrescribir insumos de investigación al repetir un comando idempotente del prototipo.
+
+## ADD-051 — cbis_ddsm_automatic_official_metadata_acquisition — **active**
+
+**Valor:** solo los cuatro CSV oficiales mass/calc train/test pueden descargarse automáticamente cuando faltan. Cada archivo se valida por SHA-256 y columnas obligatorias; copias válidas existentes se reutilizan.
+
+**Por qué:** esos cuatro archivos pequeños son necesarios para `pathology` y están separados del transfer DICOM de NBIA. Automatizar este paso elimina trabajo manual sin automatizar ni eludir la adquisición de imágenes.
+
+## ADD-052 — cbis_ddsm_auxiliary_series_metadata — **active**
+
+**Valor:** `metadata.csv` es opcional y se une por `SeriesInstanceUID` único para enriquecer `PatientID`, `StudyInstanceUID`, lateralidad y vista. Nunca se usa como ground truth.
+
+**Por qué:** la exportación TCIA puede codificar identidad de paciente/vista en `PatientID` aunque el header DICOM o la ruta NBIA no la expongan de forma utilizable. La fuente de etiqueta sigue siendo exclusivamente `pathology` de los case-description CSV.
+
+## ADD-053 — cbis_ddsm_reuse_completed_dicom_index — **active**
+
+**Valor:** se reutiliza por defecto `/workspace/runtime/dataset_cache/cbis_ddsm_dicom_index.csv`; `--force-dicom-index` reconstruye explícitamente el índice cuando cambió el árbol DICOM.
+
+**Por qué:** el primer `inspect` real sobre `/mnt/d` tardó ~11m33s. Una inspección repetida sobre un dataset sin cambios no debe volver a recorrer/abrir 10k+ DICOM innecesariamente.
+
+## ADD-054 — cbis_ddsm_explicit_object_inventory — **active**
+
+**Valor:** `inspect` reporta `dicom_objects`, `full_mammogram_images`, `cropped_images`, `roi_masks`, `other_dicom_images`, `selected_full_view_images` y `complete_study_ground_truth_counts`.
+
+**Por qué:** la tesis debe diferenciar claramente archivos/imágenes, filas de anormalidad, participantes y unidades de evaluación de cuatro vistas.
+
+## ADD-055 — validated_env_example_retained_v015 — **active**
+
+**Valor:** `.env.example` conserva `DEFAULT_MODEL_DEVICE=cpu`, `GMIC_DEVICE=gpu`, `NYU_DEVICE=gpu`, `GLAM_DEVICE=gpu`, `ALLOW_GPU=true`, `GPU_NUMBER=0`.
+
+**Por qué:** v0.15 cambia solo la capa de datasets; no introduce una configuración de modelos no probada.
+
+## ADD-056 — gmic_blackwell_legacy_integer_index_semantics — **active**
+
+**Valor:** GMIC Blackwell usa `torch.div(max_linear_idx, W_map, rounding_mode="floor")` en `get_max_window` y `build_revision=2`.
+
+**Por qué:** la primera integración con CBIS-DDSM real expuso una coordenada ROI negativa causada por semántica moderna de división verdadera. La corrección preserva el cálculo entero histórico; no modifica arquitectura, pesos, checkpoints ni entrenamiento.
+
+## ADD-057 — healthcheck_access_log_state_transitions — **active**
+
+**Valor:** primer estado `/health`, primer fallo y primera recuperación se registran; probes repetidos con el mismo estado se suprimen.
+
+**Por qué:** reduce ruido de `docker compose logs` sin ocultar pérdida o recuperación de salud.
+
+## ADD-058 — container_version_exposure — **active**
+
+**Valor:** `VERSION` existe en `/app/VERSION` y `/runner/VERSION`; `/health`/`/doctor` exponen la versión actual (`0.23.0` en este paquete).
+
+**Por qué:** permite verificar exactamente qué build está corriendo y elimina versiones hardcodeadas obsoletas.
+
+## ADD-059 — parameterized_gpu_release_validation — **active**
+
+**Valor:** `python -m model_tools.validate_gpu --models <uno|varios|all>` ejecuta `ensure_gpu` para todos los seleccionados, después `gpu_probe`, y finalmente smoke tests. Persiste un reporte JSON por corrida.
+
+**Por qué:** reduce pasos manuales repetitivos y deja una evidencia única de que la revisión configurada de cada runtime existe, ejecuta CUDA y completa inferencia upstream.
+
+## ADD-060 — explicit_gpu_force_rebuild — **active**
+
+**Valor:** `--force-rebuild` fuerza un rebuild de las imágenes GPU seleccionadas. Sin el flag, `ensure_gpu` conserva semántica idempotente y solo reconstruye si falta la imagen o cambió `build_revision`.
+
+**Por qué:** evita rebuilds costosos por defecto, pero permite demostrar una reconstrucción desde cero cuando sea metodológicamente necesario.
+
+## ADD-061 — gpu_validation_device_guard — **active**
+
+**Valor:** el smoke test de la validación integrada exige `<MODEL>_DEVICE=gpu`; `--allow-cpu-smoke` es una excepción explícita.
+
+**Por qué:** impide confundir un smoke test CPU exitoso con evidencia de que la imagen Blackwell recién asegurada realmente fue utilizada.
+
+
+## ADD-062 — gmic_metarepository_malignant_only_label_contract — **active**
+
+**Valor:** el runtime GMIC Blackwell acepta `cancer_label` con `left_malignant` y `right_malignant`; si `left_benign`/`right_benign` no existen, solo las columnas `benign_label` del CSV se registran como `NaN`.
+
+**Por qué:** el metarepository define las etiquetas canónicas breast-level mediante presencia de malignidad. El runner standalone de GMIC intentaba leer etiquetas benignas adicionales después del forward, provocando `KeyError` con datasets reales adaptados. No se debe inventar `benign = 1 - malignant`; la ausencia se representa explícitamente como dato no disponible.
+
+## ADD-063 — model_run_operation_status_precedence — **active**
+
+**Valor:** la respuesta de `/models/{model}/run` fusiona primero metadata de imagen/runtime y escribe al final `status=SUCCESS` cuando la inferencia produjo su CSV.
+
+**Por qué:** `ensure_image`/`ensure_gpu_image` usan `status=READY` para expresar disponibilidad del runtime. Esa clave no debe sobrescribir el estado de la operación `/run`, porque el pipeline necesita distinguir “imagen lista” de “inferencia completada”. La corrección preserva una guarda estricta y evita falsos fallos sin aceptar ejecuciones incompletas.
+
+
+## ADD-064 — glam_metarepository_malignant_only_label_contract — **active**
+
+GLAM preserva `left_malignant/right_malignant` y registra `NaN` solo para metadata benigna independiente ausente. No infiere ni sintetiza ground truth benigno. `build_revision=2`.
+
+## ADD-065 — per_model_preprocessed_isolation — **active**
+
+Cada modelo escribe preprocessing/XAI bajo `model_batch/preprocessed/<model>/`, evitando contaminación cruzada de artefactos.
+
+## ADD-066 — explicit_image_prediction_study_identity — **active**
+
+`study_order.csv` incluye `study_key` sanitizado; GMIC/GLAM se unen al `study_id` original por identidad explícita y validación one-to-one.
+
+## ADD-067 — model_runner_console_lifecycle_logging — **active**
+
+Eventos operativos del Runner se publican a stdout además de JSONL, manteniendo la supresión de `/health` repetitivos.
+
+## ADD-068 — chunk_evidence_aggregation — **active**
+
+La ejecución normal con chunks agrega XAI y métricas de recursos al root de la corrida.
+
+
+## ADD-069 — fastapi_lifespan_startup_hooks — **active**
+
+FastAPI y Model Runner usan `lifespan` para inicialización de startup en lugar de `@app.on_event("startup")`; se elimina el warning deprecado sin alterar las tareas de inicialización.
+
+## ADD-070 — normal_test_reproducible_sampling — **active**
+
+**Valor:** `tests_flow.normal` admite `sequential`, `random`, `stratified` (proporcional a la distribución disponible) y `balanced` (cuotas iguales por clase), con `--seed` determinístico.
+
+**Por qué:** la primera corrida end-to-end exitosa seleccionó los primeros 5 estudios y los cinco fueron benignos. La selección explícita permite probar ambas clases sin modificar el dataset preparado.
+
+## ADD-071 — normal_test_sampling_traceability — **active**
+
+**Valor:** cada corrida escribe `selected_studies.csv` y persiste estrategia, seed y distribuciones de clase disponible/solicitada/real en `configuration_used.yaml` y `run_summary.json`.
+
+**Por qué:** la unidad de evidencia debe poder reproducirse por `study_id`; un simple `--samples N` no basta para trazabilidad académica.
+
+## ADD-072 — resource_monitoring_sample_naming — **active**
+
+**Valor:** `resource_metrics` usa `monitoring_samples` en lugar de `samples`.
+
+**Por qué:** ese contador representa lecturas periódicas de CPU/GPU/memoria tomadas por el monitor, no estudios ni imágenes del dataset.
+
+## ADD-073 — unavailable_metric_reasons — **active**
+
+**Valor:** cuando `sensitivity` o `roc_auc` son `null`, `metrics.json` incluye el motivo matemático explícito.
+
+**Por qué:** una muestra con una sola clase no permite calcular todas las métricas; la ausencia debe quedar explicada y no parecer un fallo silencioso.
+
+## ADD-074 — normal_test_run_summary — **active**
+
+**Valor:** `run_summary.json` registra estudios e imágenes procesadas, sampling, límite de runtime y `overall_elapsed_seconds`.
+
+**Por qué:** separa claramente unidades de dataset, observaciones de monitoreo y tiempo de pared del flujo completo.
+
+
+## ADD-075 — Configuration score analysis
+
+**Valor:** `experiments.score_analysis` analiza scores cacheados sin GPU y genera AUC por modelo, distribución por clase, correlaciones, puntos ROC, thresholds candidatos y research guards.
+
+**Razón:** la corrida real balanceada v0.21 evidenció que la escala observada no era compatible con la grilla absoluta histórica.
+
+## ADD-076 — Adaptive Configuration-Set threshold grid
+
+**Valor:** cinco quantiles (10/30/50/70/90%) por combinación de pesos; exactamente 80 combinaciones; la derivación de threshold no usa labels.
+
+**Razón:** adaptar el rango a la escala de score del Configuration Set sin contaminarlo con el Final Test Set ni hacer calibración/aprendizaje.
+
+## ADD-077 — Final Test Set isolation and cache
+
+**Valor:** Final Test Set no se infiere antes de freeze; una inferencia final existente se reutiliza si su cache es compatible.
+
+**Razón:** preservar aislamiento metodológico y evitar repetir inferencias costosas sobre los mismos estudios.
+
+## ADD-078 — Experimental score evidence
+
+**Valor:** `configuration_score_analysis/` y `final_score_analysis/` quedan dentro del experimento.
+
+**Razón:** las decisiones de peso/threshold y la evaluación final deben ser auditables desde scores brutos y métricas por modelo.
+
+
+## ADD-081 — orientation_counterfactual_diagnostic — **active**
+
+**Valor:** alterna `horizontal_flip` únicamente en estudios donde las cuatro vistas presentan `distance_from_starting_side != 0`, reejecutando los tres modelos solo para esos estudios y comparando evidencia geométrica y efecto secundario sobre scores.
+
+**Por qué:** v0.25 localizó la señal de orientación en estudios completos; la geometría del preprocessing upstream es el criterio primario y el cambio de AUC permanece diagnóstico/post-hoc.

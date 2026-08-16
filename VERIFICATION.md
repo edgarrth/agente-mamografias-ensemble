@@ -1,54 +1,92 @@
-# Verification — v0.12
+# Verification — through v0.29.2
 
-Package verification update on 2026-08-15.
+## Scope
 
-## Static/local checks performed for this package
+- Targeted `horizontal_flip` counterfactual for studies with four-view starting-side gaps.
+- Reuse of the original run as immutable baseline.
+- New inference only for suspect studies.
+- Geometry is the primary orientation criterion; AUC impact is secondary/post-hoc only.
 
-- Python `compileall`: **PASS**.
-- Unit tests: **PASS (33/33)**, including GMIC, NYU and GLAM model-owned Blackwell profile/static compatibility checks.
-- Docker Compose/configuration YAML parse: **PASS**.
-- Host shell scripts `bash -n`: **PASS**.
-- NYU Blackwell Dockerfile static validation (pinned commit, PyTorch/TorchVision/CUDA 12.8 profile, compatibility paths): **PASS**.
-- Runtime configuration resolution check (`GMIC_DEVICE=gpu`, NYU/GLAM CPU, GMIC profile from YAML): **PASS**.
-- Architecture remains one persistent `model-runner` plus isolated model images.
-- `GPU_RUNTIME_PROFILE`, `MODEL_DEVICE` and `ALLOW_LEGACY_GPU` are no longer Docker Compose inputs.
-- The Model Runner still contains no PyTorch, TensorFlow, CUDA Toolkit or cuDNN.
+## Required release checks
 
-## Workstation evidence provided by the researcher
-
-- Model Runner / Docker socket integration: **PASS**.
-- GMIC legacy image build + real CPU smoke test: **PASS**; CSV + XAI.
-- DMV-CNN/NYU legacy image build + real CPU smoke test: **PASS**.
-- DMV-CNN/NYU Blackwell image build + `gpu_probe`: **PASS**, PyTorch `2.7.1+cu128`, CUDA 12.8, allocation/kernel PASS.
-- DMV-CNN/NYU Blackwell real GPU smoke test: **PASS**; elapsed 14.7271 s, sampled average GPU util 7.4%, sampled max GPU memory 2226 MiB.
-- GLAM legacy image build + real CPU smoke test: **PASS**; CSV + XAI.
-- RTX 5060 Ti visible in Fedora Remix WSL and Docker: **PASS**.
-- NVIDIA Container Toolkit/CDI: **PASS** (`GPU_HOST_READY`).
-- GMIC Blackwell image `mammography-model-gmic:blackwell-cu128`: **BUILD PASS**.
-- GMIC Blackwell `gpu_probe`: **GPU_READY**, PyTorch `2.7.1+cu128`, CUDA 12.8, allocation and kernel execution PASS.
-- GMIC Blackwell real smoke test: **PASS**; `predictions.csv`, 16 XAI artifacts, elapsed 86.9096 s, sampled average GPU util 8.25%, sampled max GPU memory 2424 MiB.
-- Earlier GMIC legacy CPU smoke test elapsed 127.3208 s. These smoke timings are preliminary validation evidence, not a definitive benchmark.
-
-## v0.11 evolution
-
-- GPU compatibility profile is a model characteristic and is resolved only from `config/models.yaml`.
-- CPU/GPU choice is a deployment setting resolved per model.
-- Current intended mixed deployment: GMIC on GPU; NYU and GLAM on CPU until their own GPU profiles are implemented and validated.
-- GPU inference still requires `ALLOW_GPU=true`, a configured `gpu_compatibility.image`, and a successful `gpu_probe`.
-- No model code architecture, learned weight, checkpoint, ensemble formula or training behavior is modified by v0.10.
-
-See `docs/WORKSTATION_VALIDATION.md` for the supplied execution evidence.
-
-## v0.11 added validation surface
-
-- DMV-CNN/NYU now has its own `blackwell-cu128` compatibility image definition.
-- Static tests verify the pinned NYU commit, CUDA 12.8/PyTorch 2.7.1 runtime and model-owned compatibility patch metadata.
-- Real `ensure_gpu`, `gpu_probe` and GPU smoke-test execution for NYU must be completed on the researcher workstation before this runtime is considered experimentally validated.
+- Full pytest suite passes.
+- Python compileall passes.
+- YAML files parse.
+- Shell scripts pass `bash -n`.
+- Packaged ZIP is re-extracted and full pytest is repeated from extracted bytes.
+- A synthetic orientation-counterfactual test proves that only 4-view suspects are inferred, `horizontal_flip` is toggled, geometric gaps are compared, and diagnostic results remain ineligible for freeze.
 
 
-## v0.12 added validation surface
+## v0.26.1 bootstrap regression validation
 
-- GLAM now has its own `blackwell-cu128` compatibility image definition.
-- Static tests verify the pinned GLAM commit, CUDA 12.8/PyTorch 2.7.1 runtime and declared runtime-only compatibility patches.
-- Compatibility `sed` transformations were applied against the pinned upstream GLAM `run_model.py`, `glam.py` and `common_functions.py` sources and the patched Python files passed syntax compilation.
-- Real `ensure_gpu`, `gpu_probe` and GPU smoke-test execution for GLAM must be completed on the researcher workstation before this runtime is considered experimentally validated.
+- `config/config_additions.yaml` schema: all entries require `id`, `name`, `value`, `reason`; IDs unique.
+- `ADD-081` present for `orientation_counterfactual_diagnostic`.
+- `log_configuration_additions()` smoke-tested against the packaged configuration.
+- Exact bootstrap preamble (`ensure_workspace(); log_configuration_additions()`) smoke-tested before packaging and again from the unpacked ZIP.
+
+
+## v0.27 orientation policy
+
+- label-independent upstream NYU crop+center preflight before classifier inference
+- strict four-view-gap trigger and four-view-zero counterfactual acceptance rule
+- Configuration orientation resolved before configuration inference
+- Final Test orientation unresolved until after freeze, then the same fixed policy is applied
+- `python -m experiments.orientation_preflight --run-dir <existing-run>` validates the policy without classifier inference
+
+
+## v0.27.1 PREPROCESS_ONLY PYTHONPATH regression
+
+- Reproduces the exact Python import behavior that caused `ModuleNotFoundError: No module named 'src'` when an individual `src/cropping/...` script is launched without repository-root `PYTHONPATH`.
+- Proves the same script succeeds when the repository root is exported in `PYTHONPATH`.
+- Asserts the model-runner command exports `/home/bcc/breast_cancer_classifier` for NYU before crop/center preprocessing.
+
+## v0.28.0 upstream reference runtime validation
+
+- Adds `experiments.upstream_reference_validation`.
+- Uses the official four-exam `sample_data/` bundled by `nyukat/mammography_metarepository`.
+- Reproduces `evaluation/score.py` semantics exactly: ROC-AUC with `roc_auc_score`, PR AUC with `auc(recall, precision)`, and mean CC/MLO image scores for image-model breast-level evaluation.
+- Compares GMIC/NYU/GLAM Blackwell runtime metrics against the three-decimal sample references published by the upstream metarepository.
+- Diagnostic only; does not use CBIS-DDSM, alter model/ensemble weights, thresholds, or train models.
+
+
+## v0.28.2 GLAM differential guard
+
+- Official-sample GLAM mismatch must be isolated before formal ensemble freeze.
+- Legacy reference path: pinned metarepository GLAM image, PyTorch 1.1.0, CPU.
+- Blackwell path: pinned GLAM source/checkpoint, PyTorch 2.7.1 + CUDA 12.8, GPU.
+- Compare per-image scores and pairwise ordering; a higher AUROC is not considered a reproduction pass.
+
+
+## v0.29.0 CMMD/manual-acquisition guard
+
+- CBIS-DDSM dataset acquisition is fully manual: no URL table, `urlopen`, or metadata auto-download path remains.
+- CMMD requires manually placed DICOM + `metadata/CMMD_clinicaldata_revision.xlsx`.
+- CMMD CC/MLO comes only from DICOM `ViewCodeSequence.CodeValue` (`399162004=CC`, `399368009=MLO`); `ImageLaterality` provides L/R.
+- Exact four-view structure is required; missing/duplicate views are rejected, never synthesized.
+- Binary CMMD benchmark is CMMD1/D1 only, with explicit bilateral clinical labels. Study label is malignant if either labelled breast is malignant.
+- CMMD2 four-view cases are retained as nonbenchmark audit artifacts because the cohort is malignant/subtype-focused and would confound cohort with class.
+- The audited real CMMD preflight is expected to reproduce 1,775 patients, 5,202 DICOM, 826 four-view and 949 two-view before benchmark filtering.
+
+## v0.29.1 multi-dataset input-scale guard
+
+- `input_scale_comparison` resolves one `dataset_source` from the selected run instead of labelling every dataset as CBIS-DDSM.
+- Raw prepared PNG and official NYU-crop comparison remain classifier-free and label-blind.
+
+## v0.29.2 DICOM presentation counterfactual
+
+- Adds `experiments.dicom_presentation_counterfactual` and `scripts/audit-dicom-presentation.sh`.
+- Reads only selected study/view identity and original DICOM paths; ground truth and model scores are not used.
+- Compares the production adapter conversion against Modality LUT/rescale and VOI presentation branches.
+- For identity rescale/no Modality LUT, the Modality branch must remain byte-identical to the production adapter, including the historical <16-bit left-shift convention.
+- VOI differences are diagnostic only; no branch can be selected by AUC/model score and no raw/prepared dataset bytes are modified.
+- Synthetic test verifies 8-bit MONOCHROME2 + identity rescale + SIGMOID WindowCenter/WindowWidth yields exact current-vs-Modality identity and a distinct VOI branch.
+- Version metadata is coherent at `0.29.2` across `VERSION`, package metadata, `mammography_agent.__version__`, Model Runner API and version-exposure tests.
+
+## v0.29.2 packaged-release evidence
+
+- Source tree: `pytest -q` → **115 passed**.
+- Python `compileall` → PASS.
+- All `config/*.yaml` parsed → PASS.
+- All `scripts/*.sh` pass `bash -n` → PASS.
+- Package checksum manifest covers every packaged file except itself; verification requires zero missing, modified or extra files.
+- The ZIP is re-extracted and the complete test suite is rerun from packaged bytes.

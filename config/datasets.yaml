@@ -5,18 +5,71 @@ datasets:
     official_information: https://www.cancerimagingarchive.net/collection/cbis-ddsm/
     download_policy: explicit
     automatic_download: false
-    reason: "TCIA access uses official download tooling/manifests; the prototype does not bypass or automate access controls."
+    reason: TCIA/NBIA DICOM and the four official classification CSVs are acquired
+      manually by the researcher. v0.29.0 performs no dataset network downloads; it
+      only validates and prepares files already present in the workspace.
     raw_dir: /workspace/datasets/raw/cbis_ddsm
     processed_dir: /workspace/datasets/processed/cbis_ddsm
     source_manifest: /workspace/datasets/raw/cbis_ddsm/source_manifest.csv
     canonical_manifest: /workspace/datasets/manifests/cbis_ddsm.csv
+    adapter: official_tcia_cbis_ddsm_v029
+    official_metadata_files:
+    - mass_case_description_train_set.csv
+    - mass_case_description_test_set.csv
+    - calc_case_description_train_set.csv
+    - calc_case_description_test_set.csv
+    metadata_catalog: /workspace/datasets/manifests/cbis_ddsm_metadata_rows.csv
+    view_catalog: /workspace/datasets/manifests/cbis_ddsm_view_catalog.csv
+    incomplete_manifest: /workspace/datasets/rejected/cbis_ddsm_incomplete_studies.csv
+    unresolved_manifest: /workspace/datasets/rejected/cbis_ddsm_unresolved_metadata_rows.csv
+    dicom_index_cache: /workspace/runtime/dataset_cache/cbis_ddsm_dicom_index.csv
+    minimum_full_image_pixels: 1000000
+    require_four_views_for_ensemble: true
+    ground_truth_source: official pathology column only
+    automatic_metadata_download: false
+    auxiliary_series_metadata_filename: metadata.csv
+    reuse_dicom_index_cache: true
+    official_metadata_sha256:
+      mass_case_description_train_set.csv: a4bcc1c32bfd040212737e6e8c304819334abe717cfefff56431dc50ae6db723
+      mass_case_description_test_set.csv: 60f0b4504ec024106bbdd1555030d220163ea9da0ea4688473a4c9c3e8ab0457
+      calc_case_description_train_set.csv: 3c7b07e8202f66709f446b9695e96c5d17484a65fda6a24d0170a0c1b81d56e3
+      calc_case_description_test_set.csv: 03a2f72efb6ed29f417e07f4598950e6a1e02e6b11250ff516ebe7924ace3689
+  cmmd:
+    name: CMMD
+    enabled: true
+    official_information: https://www.cancerimagingarchive.net/collection/cmmd/
+    download_policy: explicit_manual
+    automatic_download: false
+    automatic_metadata_download: false
+    reason: CMMD DICOM and CMMD_clinicaldata_revision.xlsx are acquired manually from
+      TCIA. The adapter never downloads or changes raw files.
+    raw_dir: /workspace/datasets/raw/cmmd
+    processed_dir: /workspace/datasets/processed/cmmd
+    source_manifest: /workspace/datasets/raw/cmmd/source_manifest.csv
+    canonical_manifest: /workspace/datasets/manifests/cmmd.csv
+    adapter: official_tcia_cmmd_v029
+    clinical_metadata_file: CMMD_clinicaldata_revision.xlsx
+    clinical_catalog: /workspace/datasets/manifests/cmmd_clinical_rows.csv
+    all_four_view_manifest: /workspace/datasets/manifests/cmmd_all_four_view.csv
+    incomplete_manifest: /workspace/datasets/rejected/cmmd_incomplete_studies.csv
+    excluded_manifest: /workspace/datasets/rejected/cmmd_nonbenchmark_four_view.csv
+    conflicts_manifest: /workspace/datasets/rejected/cmmd_clinical_conflicts.csv
+    dicom_index_cache: /workspace/runtime/dataset_cache/cmmd_dicom_index.csv
+    reuse_dicom_index_cache: true
+    require_four_views_for_ensemble: true
+    view_source: DICOM ViewCodeSequence.CodeValue
+    benchmark_policy: CMMD1/D1 only; exact four-view; explicit bilateral clinical
+      labels
+    ground_truth_policy: study malignant if either explicitly labelled breast is malignant;
+      otherwise benign when both explicit bilateral labels are benign
   vindr:
     name: VinDr-Mammo
     enabled: true
     official_information: https://physionet.org/content/vindr-mammo/
     download_policy: explicit
     automatic_download: false
-    reason: "PhysioNet access/usage requirements must be completed by the researcher; the prototype never bypasses them."
+    reason: PhysioNet access/usage requirements must be completed by the researcher;
+      the prototype never bypasses them.
     raw_dir: /workspace/datasets/raw/vindr
     processed_dir: /workspace/datasets/processed/vindr
     source_manifest: /workspace/datasets/raw/vindr/source_manifest.csv

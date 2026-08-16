@@ -48,9 +48,24 @@ def ensure_model(model: str):
     return r.json()
 
 
+def ensure_metarepository():
+    r = requests.post(f"{RUNNER_URL}/meta/ensure", timeout=1800)
+    if not r.ok:
+        try:
+            detail = r.json().get("detail", r.json())
+        except Exception:
+            detail = r.text
+        raise RuntimeError(f"model-runner meta ensure failed ({r.status_code}): {detail}")
+    return r.json()
 
-def ensure_gpu_model(model: str):
-    r = requests.post(f"{_model_path(model)}/ensure-gpu", timeout=7200)
+
+
+def ensure_gpu_model(model: str, force_rebuild: bool = False):
+    r = requests.post(
+        f"{_model_path(model)}/ensure-gpu",
+        params={"force_rebuild": str(bool(force_rebuild)).lower()},
+        timeout=7200,
+    )
     _raise_runner_error(r, "ensure-gpu", model)
     return r.json()
 
@@ -67,7 +82,7 @@ def smoke_test(model: str):
     return r.json()
 
 
-def run_model(model: str, run_id: str, image_dir: str, data_pickle: str, output_file: str, preprocessed_dir: str):
+def run_model(model: str, run_id: str, image_dir: str, data_pickle: str, output_file: str, preprocessed_dir: str, device: str | None = None):
     payload = {
         "run_id": run_id,
         "image_dir": image_dir,
@@ -75,7 +90,34 @@ def run_model(model: str, run_id: str, image_dir: str, data_pickle: str, output_
         "output_file": output_file,
         "preprocessed_dir": preprocessed_dir,
     }
+    if device is not None:
+        payload["device"] = device
     r = requests.post(f"{_model_path(model)}/run", json=payload, timeout=60 * 60 * 24)
     if not r.ok:
         raise RuntimeError(f"{model} model-runner call failed ({r.status_code}): {r.text}")
+    return r.json()
+
+
+def preprocess_model(model: str, run_id: str, image_dir: str, data_pickle: str, preprocessed_dir: str):
+    payload = {
+        "run_id": run_id,
+        "image_dir": image_dir,
+        "data_pickle": data_pickle,
+        "preprocessed_dir": preprocessed_dir,
+    }
+    r = requests.post(f"{_model_path(model)}/preprocess", json=payload, timeout=60 * 60 * 24)
+    _raise_runner_error(r, "preprocess", model)
+    return r.json()
+
+
+def run_glam_legacy_cpu_reference(run_id: str, image_dir: str, data_pickle: str, output_file: str, preprocessed_dir: str):
+    payload = {
+        "run_id": run_id,
+        "image_dir": image_dir,
+        "data_pickle": data_pickle,
+        "output_file": output_file,
+        "preprocessed_dir": preprocessed_dir,
+    }
+    r = requests.post(f"{RUNNER_URL}/diagnostics/glam-legacy-cpu", json=payload, timeout=60 * 60 * 24)
+    _raise_runner_error(r, "glam legacy-cpu reference", "glam")
     return r.json()

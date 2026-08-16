@@ -18,9 +18,8 @@ models:
       original_base_image: nvidia/cuda:10.1-base-ubuntu18.04
       base_image_override: nvidia/cudagl:10.1-devel-ubuntu18.04
       nvidia_repository_key_rotation_fix: auto
-      reason: The historical upstream CUDA 10.1 base tag is no longer resolvable. Use an available NVIDIA CUDA 10.1
-        / Ubuntu 18.04 image while leaving the remaining upstream Dockerfile, model source commit and checkpoints
-        unchanged.
+      reason: The historical upstream CUDA 10.1 base tag is no longer resolvable. Use an available NVIDIA CUDA 10.1 / Ubuntu
+        18.04 image while leaving the remaining upstream Dockerfile, model source commit and checkpoints unchanged.
     gpu_compatibility:
       profile: blackwell-cu128
       enabled: true
@@ -30,11 +29,16 @@ models:
       torch: 2.7.1
       torchvision: 0.22.1
       cuda_wheel: '12.8'
-      reason: The legacy GMIC image uses PyTorch 1.1.0 built for CUDA 9.0. It can enumerate the RTX 5060 Ti but
-        hangs on the first CUDA tensor allocation. Use a separate Blackwell-compatible runtime while preserving
-        the original GMIC source commit and checkpoints.
+      build_revision: 3
+      reason: The legacy GMIC image uses PyTorch 1.1.0 built for CUDA 9.0. It can enumerate the RTX 5060 Ti but hangs on the
+        first CUDA tensor allocation. Use a separate Blackwell-compatible runtime while preserving the original GMIC source
+        commit and checkpoints.
       compatibility_code_patches:
       - 'src/scripts/run_model.py: torch.has_cudnn -> torch.backends.cudnn.is_available()'
+      - 'src/utilities/tools.py: preserve PyTorch 1.1 integer quotient/remainder semantics in get_max_window with torch.div(...,
+        rounding_mode=floor)'
+      - 'src/scripts/run_model.py: accept the metarepository malignant-only cancer_label contract; missing benign labels are
+        emitted as NaN output metadata and never synthesized'
   nyu:
     academic_name: DMV-CNN / NYU Breast Cancer Classifier
     upstream_model_name: nyu_model
@@ -49,9 +53,8 @@ models:
       original_base_image: nvidia/cuda:10.1-base-ubuntu18.04
       base_image_override: nvidia/cudagl:10.1-devel-ubuntu18.04
       nvidia_repository_key_rotation_fix: auto
-      reason: The historical upstream CUDA 10.1 base tag is no longer resolvable. Use an available NVIDIA CUDA 10.1
-        / Ubuntu 18.04 image while leaving the remaining upstream Dockerfile, model source commit and checkpoints
-        unchanged.
+      reason: The historical upstream CUDA 10.1 base tag is no longer resolvable. Use an available NVIDIA CUDA 10.1 / Ubuntu
+        18.04 image while leaving the remaining upstream Dockerfile, model source commit and checkpoints unchanged.
     gpu_compatibility:
       profile: blackwell-cu128
       enabled: true
@@ -65,9 +68,9 @@ models:
       - 'src/modeling/run_model.py: torch.has_cudnn -> torch.backends.cudnn.is_available()'
       - 'src/heatmaps/run_producer.py: torch.has_cudnn -> torch.backends.cudnn.is_available()'
       - preserve metarepository heatmap output-directory creation patch in src/heatmaps/run_producer.py
-      reason: The legacy DMV-CNN/NYU image uses PyTorch 0.4.1 built for CUDA 9.2, which predates NVIDIA Blackwell.
-        Use a separate PyTorch 2.7.1 / CUDA 12.8 runtime for RTX 5060 Ti GPU validation while preserving the upstream
-        source commit, pretrained checkpoints, model architecture and inference inputs/outputs.
+      reason: The legacy DMV-CNN/NYU image uses PyTorch 0.4.1 built for CUDA 9.2, which predates NVIDIA Blackwell. Use a separate
+        PyTorch 2.7.1 / CUDA 12.8 runtime for RTX 5060 Ti GPU validation while preserving the upstream source commit, pretrained
+        checkpoints, model architecture and inference inputs/outputs.
   glam:
     academic_name: Global-Local Activation Maps (GLAM)
     upstream_model_name: nyu_glam
@@ -82,9 +85,8 @@ models:
       original_base_image: nvidia/cuda:10.1-base-ubuntu18.04
       base_image_override: nvidia/cudagl:10.1-devel-ubuntu18.04
       nvidia_repository_key_rotation_fix: auto
-      reason: The historical upstream CUDA 10.1 base tag is no longer resolvable. Use an available NVIDIA CUDA 10.1
-        / Ubuntu 18.04 image while leaving the remaining upstream Dockerfile, model source commit and checkpoints
-        unchanged.
+      reason: The historical upstream CUDA 10.1 base tag is no longer resolvable. Use an available NVIDIA CUDA 10.1 / Ubuntu
+        18.04 image while leaving the remaining upstream Dockerfile, model source commit and checkpoints unchanged.
     gpu_compatibility:
       profile: blackwell-cu128
       enabled: true
@@ -95,15 +97,17 @@ models:
       torchvision: 0.22.1
       cuda_wheel: '12.8'
       compatibility_code_patches:
-      - 'src/scripts/run_model.py: remove strict torch==1.1.0 runtime assertion; runtime version is controlled by
-        the model profile'
+      - 'src/scripts/run_model.py: remove strict torch==1.1.0 runtime assertion; runtime version is controlled by the model
+        profile'
       - 'src/scripts/run_model.py and src/modeling/glam.py: torch.has_cudnn -> torch.backends.cudnn.is_available()'
       - 'src/scripts/run_model.py: TkAgg -> Agg for headless visualization output'
       - 'src/modeling/glam.py: allocate intermediate crop/saliency tensors on the source tensor device'
       - 'src/modeling/common_functions.py: preserve legacy integer index division with torch.div(..., rounding_mode=floor)'
       - 'src/modeling/common_functions.py: grid_sample align_corners=True to preserve PyTorch 1.1 sampling semantics'
+      - 'src/scripts/run_model.py: accept the metarepository malignant-only cancer_label contract; missing benign labels are
+        emitted as NaN output metadata and never synthesized'
       reason: The legacy GLAM image uses PyTorch 1.1.0 with a CUDA 9.x-era binary and a strict runtime-version assertion.
-        A separate PyTorch 2.7.1 / CUDA 12.8 runtime is required for RTX 5060 Ti validation. Compatibility edits
-        are limited to removed framework APIs, headless rendering, device placement and preservation of historical
-        indexing/sampling semantics; the pinned GLAM source commit, pretrained checkpoints and model architecture
-        are unchanged.
+        A separate PyTorch 2.7.1 / CUDA 12.8 runtime is required for RTX 5060 Ti validation. Compatibility edits are limited
+        to removed framework APIs, headless rendering, device placement and preservation of historical indexing/sampling semantics;
+        the pinned GLAM source commit, pretrained checkpoints and model architecture are unchanged.
+      build_revision: 2

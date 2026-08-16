@@ -70,7 +70,7 @@ class ManifestDatasetAdapter(DatasetAdapter):
         if bits < 16:
             arr=np.left_shift(arr,16-bits).astype(np.uint16)
         with dest.open("wb") as fh:
-            png.Writer(width=arr.shape[1],height=arr.shape[0],greyscale=True,bitdepth=16).write(fh,arr.tolist())
+            png.Writer(width=arr.shape[1],height=arr.shape[0],greyscale=True,bitdepth=16).write(fh,(row.tolist() for row in arr))
 
     def prepare(self) -> dict:
         p=self._paths(); p["processed"].mkdir(parents=True,exist_ok=True); p["canonical"].parent.mkdir(parents=True,exist_ok=True)
@@ -96,5 +96,4 @@ class ManifestDatasetAdapter(DatasetAdapter):
         audit("DATASET_PREPARED",dataset=self.key,studies=len(df),manifest=str(p["canonical"]))
         return {"dataset":self.key,"status":"AVAILABLE","studies":len(df),"manifest":str(p["canonical"])}
 
-class CBISDDSMDatasetAdapter(ManifestDatasetAdapter): pass
 class VinDrDatasetAdapter(ManifestDatasetAdapter): pass

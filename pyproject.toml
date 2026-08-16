@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mammography-ai-agent"
-version = "0.12.0"
+version = "0.29.2"
 description = "Master-thesis prototype: GMIC + DMV-CNN/NYU + GLAM with deterministic soft voting"
 requires-python = ">=3.11,<3.14"
 dependencies = [
@@ -22,6 +22,7 @@ dependencies = [
   "streamlit>=1.38,<2",
   "langgraph>=0.2,<2",
   "pydicom>=3,<4",
+  "openpyxl>=3.1,<4",
   "pypng>=0.20220715.0",
   "psutil>=6,<8",
 ]

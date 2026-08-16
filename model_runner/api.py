@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from pathlib import Path
@@ -8,13 +8,17 @@ import datetime
 import fcntl
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
+import shlex
 import subprocess
 import threading
 import time
 import yaml
+
+from .health_logging import install_healthcheck_access_filter
 
 WORKSPACE = Path(os.getenv("WORKSPACE_ROOT", "/workspace"))
 CONFIG = Path("/runner/config")
@@ -26,7 +30,27 @@ GPU = os.getenv("GPU_NUMBER", "0")
 BOOTSTRAP_MODE = os.getenv("MODEL_BOOTSTRAP_MODE", "lazy").lower()
 RESOURCE_SAMPLE_SECONDS = float(os.getenv("RESOURCE_SAMPLE_SECONDS", "2"))
 
-app = FastAPI(title="Mammography Model Runner", version="0.10.0")
+APP_VERSION = "0.29.2"
+
+CONSOLE_LOG = logging.getLogger("mammography-model-runner")
+if not CONSOLE_LOG.handlers:
+    _console_handler = logging.StreamHandler()
+    _console_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    CONSOLE_LOG.addHandler(_console_handler)
+CONSOLE_LOG.setLevel(os.getenv("LOG_LEVEL", "INFO"))
+
+_CONSOLE_EVENT_EXACT = {
+    "MODEL_RUNNER_READY", "GPU_LOCK_WAITING", "GPU_LOCK_ACQUIRED", "GPU_LOCK_RELEASED",
+    "MODEL_RUN_STARTED", "MODEL_CHILD_CONTAINER_STARTED", "MODEL_COMMAND_STARTED",
+    "MODEL_COMMAND_COMPLETED", "MODEL_RUN_SUCCESS", "MODEL_RUN_FAILED",
+    "MODEL_IMAGE_BUILD_STARTED", "MODEL_IMAGE_BUILD_COMPLETED",
+    "GPU_MODEL_IMAGE_BUILD_STARTED", "GPU_MODEL_IMAGE_BUILD_COMPLETED",
+    "GPU_MODEL_PROBE_FAILED", "MODEL_SMOKE_FAILED",
+    "MODEL_PREPROCESS_STARTED", "MODEL_PREPROCESS_COMPLETED", "MODEL_PREPROCESS_FAILED",
+}
+
+def _console_event(event: str) -> bool:
+    return event in _CONSOLE_EVENT_EXACT or event.endswith("_FAILED")
 
 
 def cfg() -> dict:
@@ -83,6 +107,10 @@ def log(event: str, model: str | None = None, **data):
     }
     with (p / "model_runner.jsonl").open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+    if _console_event(event):
+        level=logging.ERROR if event.endswith("_FAILED") else logging.INFO
+        compact={k:v for k,v in rec.items() if k not in {"timestamp","component","stdout","stderr","cmd"}}
+        CONSOLE_LOG.log(level, "%s %s", event, compact)
 
 
 @contextmanager
@@ -363,7 +391,7 @@ def gpu_probe_passed(model: str) -> bool:
         return False
 
 
-def ensure_gpu_image(model: str) -> dict:
+def ensure_gpu_image(model: str, force_rebuild: bool = False) -> dict:
     model = model.strip().lower()
     spec = spec_for(model)
     compat = gpu_compatibility_for(model)
@@ -377,10 +405,14 @@ def ensure_gpu_image(model: str) -> dict:
         raise FileNotFoundError(f"GPU compatibility Dockerfile is missing: {dockerfile}")
     commit = ensure_meta()
     tag = gpu_image_tag(model)
+    build_revision = int(compat.get("build_revision", 1))
+    dockerfile_sha256 = hashlib.sha256(dockerfile.read_bytes()).hexdigest()
     metadata = {
         "mode": "gpu_runtime_compatibility",
         "profile": configured_profile,
         "dockerfile": str(dockerfile),
+        "dockerfile_sha256": dockerfile_sha256,
+        "build_revision": build_revision,
         "python": str(compat.get("python")),
         "torch": str(compat.get("torch")),
         "torchvision": str(compat.get("torchvision")),
@@ -395,13 +427,25 @@ def ensure_gpu_image(model: str) -> dict:
         "runtime_dependencies_changed": True,
     }
     with shared_lock(f"gpu_image_build_{model}"):
-        if not gpu_image_exists(model):
-            log("GPU_MODEL_IMAGE_BUILD_STARTED", model=model, image=tag, **metadata)
-            sh(["docker", "build", "-t", tag, "-f", str(dockerfile), "."], cwd=META, timeout=7200, model=model)
-            log("GPU_MODEL_IMAGE_BUILD_COMPLETED", model=model, image=tag, **metadata)
         audit = WORKSPACE / "models" / "compatibility"
         audit.mkdir(parents=True, exist_ok=True)
-        (audit / f"{model}-gpu.json").write_text(
+        audit_file = audit / f"{model}-gpu.json"
+        previous_revision = 1
+        if audit_file.is_file():
+            try:
+                previous_revision = int(json.loads(audit_file.read_text(encoding="utf-8")).get("build_revision", 1))
+            except Exception:
+                previous_revision = 1
+        image_present = gpu_image_exists(model)
+        rebuild_required = bool(force_rebuild) or (not image_present) or previous_revision != build_revision
+        if rebuild_required:
+            log("GPU_MODEL_IMAGE_BUILD_STARTED", model=model, image=tag, previous_revision=previous_revision, force_rebuild=bool(force_rebuild), **metadata)
+            sh(["docker", "build", "-t", tag, "-f", str(dockerfile), "."], cwd=META, timeout=7200, model=model)
+            probe = gpu_probe_path(model)
+            if probe.exists():
+                probe.unlink()
+            log("GPU_MODEL_IMAGE_BUILD_COMPLETED", model=model, image=tag, previous_revision=previous_revision, force_rebuild=bool(force_rebuild), probe_invalidated=True, **metadata)
+        audit_file.write_text(
             json.dumps({"image": tag, "metarepo_commit": commit, **metadata}, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
@@ -412,6 +456,8 @@ def ensure_gpu_image(model: str) -> dict:
         "gpu_compatibility": metadata,
         "status": "READY",
         "runner_service": "model-runner",
+        "rebuild_performed": rebuild_required,
+        "force_rebuild": bool(force_rebuild),
     }
 
 
@@ -585,7 +631,7 @@ def _parse_mem_mib(text: str) -> float | None:
     return None
 
 
-def sample_container(container: str, device: str, stop: threading.Event, samples: list[dict]):
+def sample_container(container: str, device: str, stop: threading.Event, metric_samples: list[dict]):
     while not stop.is_set():
         rec: dict = {}
         cp = subprocess.run(
@@ -619,14 +665,14 @@ def sample_container(container: str, device: str, stop: threading.Event, samples
                 except Exception:
                     pass
         if rec:
-            samples.append(rec)
+            metric_samples.append(rec)
         stop.wait(RESOURCE_SAMPLE_SECONDS)
 
 
 def exec_with_metrics(container: str, cmd: list[str], device: str):
-    samples: list[dict] = []
+    metric_samples: list[dict] = []
     stop = threading.Event()
-    t = threading.Thread(target=sample_container, args=(container, device, stop, samples), daemon=True)
+    t = threading.Thread(target=sample_container, args=(container, device, stop, metric_samples), daemon=True)
     t.start()
     started = time.monotonic()
     cp = subprocess.run(cmd, text=True, capture_output=True, timeout=60 * 60 * 24)
@@ -639,16 +685,16 @@ def exec_with_metrics(container: str, cmd: list[str], device: str):
         )
 
     def avg(key: str):
-        vals = [x[key] for x in samples if x.get(key) is not None]
+        vals = [x[key] for x in metric_samples if x.get(key) is not None]
         return sum(vals) / len(vals) if vals else None
 
     def mx(key: str):
-        vals = [x[key] for x in samples if x.get(key) is not None]
+        vals = [x[key] for x in metric_samples if x.get(key) is not None]
         return max(vals) if vals else None
 
     return cp.stdout.strip(), {
         "elapsed_seconds": elapsed,
-        "samples": len(samples),
+        "monitoring_samples": len(metric_samples),
         "avg_cpu_percent": avg("cpu_percent"),
         "max_memory_mib": mx("memory_mib"),
         "avg_gpu_util_percent": avg("gpu_util_percent"),
@@ -665,6 +711,14 @@ class RunRequest(BaseModel):
     device: str | None = None
 
 
+class PreprocessRequest(BaseModel):
+    run_id: str
+    image_dir: str
+    data_pickle: str
+    preprocessed_dir: str
+
+
+
 def validate_workspace_path(value: str) -> Path:
     p = Path(value).resolve()
     root = WORKSPACE.resolve()
@@ -677,10 +731,32 @@ def _run_under_optional_gpu_lock(model: str, req: RunRequest):
     device = (req.device or configured_device_for(model)).lower()
     if device == "gpu":
         # One shared lock serializes all model GPU inference on the single research GPU.
+        log("GPU_LOCK_WAITING", model=model, run_id=req.run_id, gpu=GPU)
         with shared_lock("gpu_inference"):
             log("GPU_LOCK_ACQUIRED", model=model, run_id=req.run_id, gpu=GPU)
-            return _run_real_unlocked(model, req, device)
+            try:
+                return _run_real_unlocked(model, req, device)
+            finally:
+                log("GPU_LOCK_RELEASED", model=model, run_id=req.run_id, gpu=GPU)
     return _run_real_unlocked(model, req, device)
+
+
+def _run_success_payload(info: dict, output_file: str, xai: list[str], resource_metrics: dict, stdout: str) -> dict:
+    """Return the contract for a completed inference run.
+
+    ensure_image/ensure_gpu_image metadata intentionally uses status=READY to
+    describe image readiness.  A completed /run operation has a different
+    status contract: SUCCESS.  Merge model metadata first and operation status
+    last so READY cannot overwrite SUCCESS.
+    """
+    return {
+        **info,
+        "status": "SUCCESS",
+        "output_file": output_file,
+        "xai_artifacts": xai,
+        "resource_metrics": resource_metrics,
+        "stdout_tail": stdout[-2000:],
+    }
 
 
 def _run_real_unlocked(model: str, req: RunRequest, device: str):
@@ -727,27 +803,208 @@ def _run_real_unlocked(model: str, req: RunRequest, device: str):
         args += ["--gpus", f"device={GPU}"]
     args += [selected_image, "bash", "-lc", "trap : TERM INT; sleep infinity & wait"]
 
+    log(
+        "MODEL_RUN_STARTED", model=model, run_id=req.run_id, device=device, image=selected_image,
+        image_dir=str(image_dir), output_file=str(out), preprocessed_dir=str(pre),
+        input_images=len(list(image_dir.glob("*.png"))),
+    )
     try:
         sh(args, timeout=60, model=model)
+        log("MODEL_CHILD_CONTAINER_STARTED", model=model, run_id=req.run_id, container=child_container, image=selected_image)
         sh(["docker", "cp", f"{pred}/.", f"{child_container}:{target}"], model=model)
         cmd = [
             "docker", "exec", "-w", target, child_container, "bash", "predict.sh",
             str(data), str(image_dir), str(out), safe, device, str(pre),
         ]
+        log("MODEL_COMMAND_STARTED", model=model, run_id=req.run_id, container=child_container, device=device)
         stdout, resource_metrics = exec_with_metrics(child_container, cmd, device)
+        log(
+            "MODEL_COMMAND_COMPLETED", model=model, run_id=req.run_id,
+            elapsed_seconds=resource_metrics.get("elapsed_seconds"),
+            avg_gpu_util_percent=resource_metrics.get("avg_gpu_util_percent"),
+            max_gpu_memory_mib=resource_metrics.get("max_gpu_memory_mib"),
+        )
         if not out.exists() or out.stat().st_size == 0:
             raise RuntimeError(f"Expected prediction CSV was not produced: {out}")
         xai: list[str] = []
         for candidate in pre.rglob("visualization"):
             if candidate.is_dir():
                 xai += [str(p) for p in candidate.rglob("*") if p.is_file()]
-        log("MODEL_RUN_SUCCESS", model=model, run_id=req.run_id, output=str(out), xai_count=len(xai))
+        log(
+            "MODEL_RUN_SUCCESS", model=model, run_id=req.run_id, output=str(out), xai_count=len(xai),
+            elapsed_seconds=resource_metrics.get("elapsed_seconds"),
+            max_gpu_memory_mib=resource_metrics.get("max_gpu_memory_mib"),
+        )
+        return _run_success_payload(
+            info=info,
+            output_file=str(out),
+            xai=xai,
+            resource_metrics=resource_metrics,
+            stdout=stdout,
+        )
+    finally:
+        subprocess.run(["docker", "rm", "-f", child_container], capture_output=True, text=True)
+
+
+
+
+def _run_glam_legacy_cpu_reference_unlocked(req: RunRequest):
+    """Run the pinned upstream GLAM image on CPU with PyTorch 1.1.
+
+    This is a reproduction differential, not a production path.  The only source
+    edit performed inside the ephemeral child container is TkAgg -> Agg so the
+    historical script can run headlessly.  Model source commit, architecture,
+    checkpoint, preprocessing and numerical framework version remain upstream.
+    """
+    model = "glam"
+    ensure_meta()
+    info = ensure_image(model)
+    selected_image = image_tag(model)
+    image_dir = validate_workspace_path(req.image_dir)
+    data = validate_workspace_path(req.data_pickle)
+    out = validate_workspace_path(req.output_file)
+    pre = validate_workspace_path(req.preprocessed_dir)
+    if not image_dir.is_dir() or not data.is_file():
+        raise FileNotFoundError("Input images/data.pkl missing")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    pre.mkdir(parents=True, exist_ok=True)
+    os.chmod(out.parent, 0o777)
+    os.chmod(pre, 0o777)
+
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", req.run_id)[-72:]
+    child_container = f"mammography-legacy-cpu-glam-{safe}".lower()
+    upstream = spec_for(model)["upstream_model_name"]
+    src_predict = META / "models" / upstream / "predict"
+    pred = WORKSPACE / "runtime" / "predict_overrides" / safe / "glam_legacy_cpu"
+    if pred.exists():
+        shutil.rmtree(pred)
+    shutil.copytree(src_predict, pred)
+    target = predict_path(model)
+    args = [
+        "docker", "run", "-d", "--name", child_container,
+        "--volumes-from", ANCHOR, "--network", "none",
+        selected_image, "bash", "-lc", "trap : TERM INT; sleep infinity & wait",
+    ]
+    log("GLAM_LEGACY_CPU_STARTED", run_id=req.run_id, image=selected_image)
+    try:
+        sh(args, timeout=60, model=model)
+        # Headless-only compatibility change.  Do not alter inference semantics.
+        sh([
+            "docker", "exec", "-u", "root", child_container, "bash", "-lc",
+            "sed -i 's/matplotlib.use(\"TkAgg\")/matplotlib.use(\"Agg\")/' "
+            "/home/glam/GLAM/src/scripts/run_model.py",
+        ], model=model)
+        sh(["docker", "cp", f"{pred}/.", f"{child_container}:{target}"], model=model)
+        cmd = [
+            "docker", "exec", "-w", target, child_container, "bash", "predict.sh",
+            str(data), str(image_dir), str(out), safe, "cpu", str(pre),
+        ]
+        stdout, resource_metrics = exec_with_metrics(child_container, cmd, "cpu")
+        if not out.exists() or out.stat().st_size == 0:
+            raise RuntimeError(f"Expected legacy GLAM prediction CSV was not produced: {out}")
+        payload = _run_success_payload(
+            info=info,
+            output_file=str(out),
+            xai=[],
+            resource_metrics=resource_metrics,
+            stdout=stdout,
+        )
+        payload.update({
+            "diagnostic_runtime": "legacy_cpu_torch1.1",
+            "device": "cpu",
+            "headless_only_patch": "matplotlib TkAgg -> Agg",
+            "model_source_changed": False,
+            "model_weights_changed": False,
+            "inference_semantics_intentionally_changed": False,
+        })
+        return payload
+    finally:
+        subprocess.run(["docker", "rm", "-f", child_container], capture_output=True, text=True)
+
+
+def _preprocess_only_unlocked(model: str, req: PreprocessRequest):
+    """Run only the upstream crop + optimal-center stages, without classifier inference.
+
+    v0.27 uses this exact upstream preprocessing as a label-independent orientation
+    preflight.  It intentionally runs inside the same pinned model image/source tree
+    used for inference.  No checkpoint is loaded and no prediction is produced.
+    """
+    model = model.strip().lower()
+    spec_for(model)
+    image_dir = validate_workspace_path(req.image_dir)
+    data = validate_workspace_path(req.data_pickle)
+    pre = validate_workspace_path(req.preprocessed_dir)
+    if not image_dir.is_dir() or not data.is_file():
+        raise FileNotFoundError("Input images/data.pkl missing")
+    pre.mkdir(parents=True, exist_ok=True)
+    os.chmod(pre, 0o777)
+
+    # Prefer the validated GPU-compatibility image when available because it is the
+    # exact runtime used by the thesis inference.  Preprocessing itself remains CPU-only.
+    if gpu_compatibility_for(model).get("enabled"):
+        info = ensure_gpu_image(model)
+        selected_image = gpu_image_tag(model)
+    else:
+        info = ensure_image(model)
+        selected_image = image_tag(model)
+
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", req.run_id)[-72:]
+    child_container = f"mammography-preprocess-{model}-{safe}".lower()
+    cropped = pre / f"{safe}_cropped_images"
+    cropped_list = cropped / "cropped_exam_list.pkl"
+    center_data = pre / f"{safe}_center_data.pkl"
+    if cropped.exists():
+        shutil.rmtree(cropped)
+    if center_data.exists():
+        center_data.unlink()
+
+    target = predict_path(model)
+    args = [
+        "docker", "run", "-d", "--name", child_container,
+        "--volumes-from", ANCHOR, "--network", "none",
+        selected_image, "bash", "-lc", "trap : TERM INT; sleep infinity & wait",
+    ]
+    log("MODEL_PREPROCESS_STARTED", model=model, run_id=req.run_id, image=selected_image,
+        image_dir=str(image_dir), preprocessed_dir=str(pre), input_images=len(list(image_dir.glob("*.png"))))
+    try:
+        sh(args, timeout=60, model=model)
+        # The upstream NYU repository explicitly requires its repository root in
+        # PYTHONPATH when the individual preprocessing scripts are invoked directly.
+        # Running ``python3 src/cropping/crop_mammogram.py`` sets sys.path[0] to the
+        # script directory (src/cropping), so ``import src...`` otherwise fails even
+        # when Docker's working directory is the repository root.  The normal upstream
+        # run.sh/predict path masks this detail; PREPROCESS_ONLY must preserve it.
+        repo_pythonpath = "/home/bcc/breast_cancer_classifier" if model == "nyu" else target
+        command = " && ".join([
+            f"export PYTHONPATH={shlex.quote(repo_pythonpath)}${{PYTHONPATH:+:$PYTHONPATH}}",
+            "python3 src/cropping/crop_mammogram.py "
+            f"--input-data-folder {shlex.quote(str(image_dir))} "
+            f"--output-data-folder {shlex.quote(str(cropped))} "
+            f"--exam-list-path {shlex.quote(str(data))} "
+            f"--cropped-exam-list-path {shlex.quote(str(cropped_list))} --num-processes 10",
+            "python3 src/optimal_centers/get_optimal_centers.py "
+            f"--cropped-exam-list-path {shlex.quote(str(cropped_list))} "
+            f"--data-prefix {shlex.quote(str(cropped))} "
+            f"--output-exam-list-path {shlex.quote(str(center_data))} --num-processes 10",
+        ])
+        stdout, metrics = exec_with_metrics(
+            child_container,
+            ["docker", "exec", "-w", target, child_container, "bash", "-lc", command],
+            "cpu",
+        )
+        if not center_data.is_file():
+            raise RuntimeError(f"Expected preprocessing metadata was not produced: {center_data}")
+        log("MODEL_PREPROCESS_COMPLETED", model=model, run_id=req.run_id,
+            center_data=str(center_data), elapsed_seconds=metrics.get("elapsed_seconds"))
         return {
-            "status": "SUCCESS",
             **info,
-            "output_file": str(out),
-            "xai_artifacts": xai,
-            "resource_metrics": resource_metrics,
+            "status": "SUCCESS",
+            "operation": "PREPROCESS_ONLY",
+            "classifier_inference_performed": False,
+            "center_data": str(center_data),
+            "cropped_exam_list": str(cropped_list),
+            "cropped_images": str(cropped),
+            "resource_metrics": metrics,
             "stdout_tail": stdout[-2000:],
         }
     finally:
@@ -774,8 +1031,9 @@ def model_info(model: str) -> dict:
     }
 
 
-@app.on_event("startup")
-def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    install_healthcheck_access_filter()
     diagnostics = docker_diagnostics()
     log(
         "MODEL_RUNNER_READY",
@@ -796,7 +1054,9 @@ def startup():
             except Exception as exc:
                 log("EAGER_MODEL_BUILD_FAILED", model=model, error=str(exc))
                 raise
+    yield
 
+app = FastAPI(title="Mammography Model Runner", version=APP_VERSION, lifespan=lifespan)
 
 @app.get("/doctor")
 def doctor():
@@ -804,7 +1064,7 @@ def doctor():
     d = docker_diagnostics()
     return {
         "service": "model-runner",
-        "version": "0.10.0",
+        "version": APP_VERSION,
         "default_model_device": DEFAULT_MODEL_DEVICE,
         "model_devices": configured_devices(),
         "gpu_profiles": configured_gpu_profiles(),
@@ -838,7 +1098,7 @@ def health():
     return {
         "status": "ok",
         "service": "model-runner",
-        "version": "0.10.0",
+        "version": APP_VERSION,
         "default_model_device": DEFAULT_MODEL_DEVICE,
         "model_devices": configured_devices(),
         "gpu_profiles": configured_gpu_profiles(),
@@ -855,6 +1115,16 @@ def health():
 @app.get("/models")
 def models():
     return [model_info(m) for m in sorted(configured_models())]
+
+
+@app.post("/meta/ensure")
+def ensure_metarepository_endpoint():
+    try:
+        commit = ensure_meta()
+        return {"status": "READY", "path": str(META), "resolved_commit": commit}
+    except Exception as exc:
+        log("METAREPOSITORY_ENSURE_FAILED", error=str(exc))
+        raise HTTPException(500, str(exc))
 
 
 @app.get("/models/{model}/info")
@@ -875,9 +1145,9 @@ def ensure(model: str):
 
 
 @app.post("/models/{model}/ensure-gpu")
-def ensure_gpu(model: str):
+def ensure_gpu(model: str, force_rebuild: bool = False):
     try:
-        return ensure_gpu_image(model)
+        return ensure_gpu_image(model, force_rebuild=force_rebuild)
     except Exception as exc:
         log("GPU_MODEL_ENSURE_FAILED", model=model, error=str(exc))
         raise HTTPException(500, str(exc))
@@ -917,6 +1187,25 @@ def smoke_test(model: str):
         )
     except Exception as exc:
         log("MODEL_SMOKE_FAILED", model=model, error=str(exc))
+        raise HTTPException(500, str(exc))
+
+
+@app.post("/diagnostics/glam-legacy-cpu")
+def glam_legacy_cpu_reference(req: RunRequest):
+    try:
+        return _run_glam_legacy_cpu_reference_unlocked(req)
+    except Exception as exc:
+        log("GLAM_LEGACY_CPU_FAILED", run_id=req.run_id, error=str(exc))
+        raise HTTPException(500, str(exc))
+
+
+@app.post("/models/{model}/preprocess")
+def preprocess(model: str, req: PreprocessRequest):
+    try:
+        spec_for(model)
+        return _preprocess_only_unlocked(model, req)
+    except Exception as exc:
+        log("MODEL_PREPROCESS_FAILED", model=model, run_id=req.run_id, error=str(exc))
         raise HTTPException(500, str(exc))
 
 

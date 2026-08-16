@@ -2,6 +2,7 @@ FROM python:3.12-slim
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml /app/
+COPY VERSION /app/VERSION
 COPY mammography_agent /app/mammography_agent
 COPY dataset_pipeline /app/dataset_pipeline
 COPY tests_flow /app/tests_flow

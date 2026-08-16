@@ -60,5 +60,28 @@ RUN sed -i "s/matplotlib.use(\"TkAgg\")/matplotlib.use(\"Agg\")/" \
     && sed -i 's/F.grid_sample(original_img_pytorch, grid)/F.grid_sample(original_img_pytorch, grid, align_corners=True)/' \
       /home/glam/GLAM/src/modeling/common_functions.py
 
+# The metarepository batch contract supplies breast-level malignant labels.
+# GLAM standalone copies optional benign labels into its CSV only after inference.
+# Do not fabricate benign ground truth: preserve required malignant labels and emit
+# NaN for benign_label metadata when those independent labels are unavailable.
+RUN python - <<'PY'
+from pathlib import Path
+p = Path('/home/glam/GLAM/src/scripts/run_model.py')
+t = p.read_text()
+replacements = {
+    'return cancer_label["left_benign"], cancer_label["left_malignant"]':
+        'return cancer_label.get("left_benign", np.nan), cancer_label["left_malignant"]',
+    'return cancer_label["right_benign"], cancer_label["right_malignant"]':
+        'return cancer_label.get("right_benign", np.nan), cancer_label["right_malignant"]',
+}
+for old, new in replacements.items():
+    if old not in t:
+        raise SystemExit(f'GLAM label-contract patch anchor missing: {old}')
+    t = t.replace(old, new, 1)
+p.write_text(t)
+PY
+RUN grep -F 'cancer_label.get("left_benign", np.nan)' /home/glam/GLAM/src/scripts/run_model.py \
+    && grep -F 'cancer_label.get("right_benign", np.nan)' /home/glam/GLAM/src/scripts/run_model.py
+
 RUN mkdir -p /home/predictions && chmod 777 /home/predictions
 WORKDIR /home/glam/GLAM

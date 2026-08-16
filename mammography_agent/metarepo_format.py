@@ -5,10 +5,12 @@ from .workspace import safe_workspace_path
 
 def build_batch(df: pd.DataFrame, run_dir: Path):
     images=run_dir/"images"; images.mkdir(parents=True,exist_ok=True)
-    data=[]; study_order=[]
+    data=[]; study_order=[]; sanitized_keys=[]
     for _,r in df.reset_index(drop=True).iterrows():
-        sid=re.sub(r"[^A-Za-z0-9_.-]","_",str(r.study_id))
-        study_order.append(str(r.study_id))
+        original_sid=str(r.study_id)
+        sid=re.sub(r"[^A-Za-z0-9_.-]","_",original_sid)
+        study_order.append(original_sid)
+        sanitized_keys.append(sid)
         names={}
         for col,key,suffix in [
             ("l_cc","L-CC","L_CC"),("r_cc","R-CC","R_CC"),
@@ -22,7 +24,14 @@ def build_batch(df: pd.DataFrame, run_dir: Path):
                      "horizontal_flip":str(r.get("horizontal_flip","NO"))})
     pkl=run_dir/"data.pkl"
     with pkl.open("wb") as fh: pickle.dump(data,fh,protocol=4)
-    pd.DataFrame({"position":range(len(study_order)),"study_id":study_order}).to_csv(run_dir/"study_order.csv",index=False)
+    if len(set(sanitized_keys)) != len(sanitized_keys):
+        duplicates=pd.Series(sanitized_keys)[pd.Series(sanitized_keys).duplicated(keep=False)].tolist()
+        raise ValueError(f"Sanitized study_id collision in model batch: {duplicates[:10]}")
+    pd.DataFrame({
+        "position":range(len(study_order)),
+        "study_id":study_order,
+        "study_key":sanitized_keys,
+    }).to_csv(run_dir/"study_order.csv",index=False)
     for p in [run_dir, images]: p.chmod(0o777)
     pkl.chmod(0o666)
     return images,pkl
