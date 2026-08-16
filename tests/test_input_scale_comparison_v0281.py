@@ -34,7 +34,7 @@ def test_input_scale_comparison_raw_and_cropped_classifier_free(tmp_path, monkey
     cbis_img.mkdir(parents=True)
     rows = []
     for study in ("S1", "S2"):
-        rec = {"study_id": study, "patient_id": study, "ground_truth": 0, "left_ground_truth": 0, "right_ground_truth": 0, "horizontal_flip": "NO"}
+        rec = {"study_id": study, "patient_id": study, "dataset_source": "cmmd", "ground_truth": 0, "left_ground_truth": 0, "right_ground_truth": 0, "horizontal_flip": "NO"}
         for col, view in mod.VIEW_COLUMNS.items():
             p = cbis_img / f"{study}_{view}.png"
             _write_png(p, 1000 if study == "S1" else 2000)
@@ -71,7 +71,7 @@ def test_input_scale_comparison_raw_and_cropped_classifier_free(tmp_path, monkey
 
     out = mod.compare_input_scale(run, workspace / "output" / "analyses" / "scale-test", include_nyu_crop=True)
     image_stats = pd.read_csv(out / "input_scale_image_stats.csv")
-    assert set(image_stats["source"]) == {"cbis_ddsm", "official_sample"}
+    assert set(image_stats["source"]) == {"cmmd", "official_sample"}
     assert set(image_stats["stage"]) == {"raw_prepared_png", "nyu_upstream_cropped"}
     assert len(calls) == 2
     summary = (out / "input_scale_summary.json").read_text()
@@ -79,4 +79,7 @@ def test_input_scale_comparison_raw_and_cropped_classifier_free(tmp_path, monkey
     assert '"ground_truth_used": false' in summary
     comparison = pd.read_csv(out / "input_scale_comparison.csv")
     raw_mean = comparison[(comparison.stage == "raw_prepared_png") & (comparison.metric == "median_normalized_mean")].iloc[0]
-    assert raw_mean["ratio_cbis_to_official"] < 1.0
+    assert raw_mean["dataset_source"] == "cmmd"
+    assert raw_mean["ratio_dataset_to_official"] < 1.0
+    assert mod._detect_dataset_source(pd.DataFrame({"study_id": ["CBIS-DDSM_P_1"]})) == "cbis_ddsm"
+    assert mod._detect_dataset_source(pd.DataFrame({"study_id": ["CMMD_D1-1"]})) == "cmmd"

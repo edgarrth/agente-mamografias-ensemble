@@ -136,8 +136,8 @@ Esta sección centraliza los comandos usados durante la validación del prototip
 | `docker compose logs -f model-runner` | Sigue el ciclo de inferencia del Model Runner: espera/adquisición GPU, inicio de contenedor temporal, inicio/fin de comando, éxito/fallo y métricas resumidas. | Nada. | Eventos de inferencia visibles sin spam de healthchecks. |
 | `./scripts/logs.sh` | Wrapper para seguir en vivo los logs de `fastapi` y `model-runner` con un tail inicial configurable (`TAIL_LINES=200 ./scripts/logs.sh`). | Nada. | Logs operativos de servicios; eventos CLI persisten además en `workspace/logs/*.jsonl`. |
 | `tail -f workspace/logs/audit.jsonl workspace/logs/model_runner.jsonl` | Sigue la auditoría persistente de CLI/pipeline y Runner desde el host. | Nada. | Eventos JSONL incluso cuando el comando se ejecutó mediante `docker compose exec`. |
-| `docker compose exec fastapi cat /app/VERSION` | Verifica versión del código dentro de FastAPI. | Nada. | `0.26.1`. |
-| `docker compose exec model-runner cat /runner/VERSION` | Verifica versión del Model Runner. | Nada. | `0.26.1`. |
+| `docker compose exec fastapi cat /app/VERSION` | Verifica versión del código dentro de FastAPI. | Nada. | `0.29.2`. |
+| `docker compose exec model-runner cat /runner/VERSION` | Verifica versión del Model Runner. | Nada. | `0.29.2`. |
 | `docker compose exec model-runner docker version` | Verifica cliente/daemon Docker desde el Runner. | Nada. | Client/Server accesibles. |
 | `docker compose exec model-runner docker info` | Diagnóstico detallado del daemon desde el Runner. | Nada. | Información del Engine sin error. |
 | `docker compose exec fastapi python -m model_tools.status` | Estado de imágenes, perfiles GPU y device por modelo. | Nada. | GMIC/NYU/GLAM `device=gpu` en workstation validada. |
@@ -153,6 +153,7 @@ Esta sección centraliza los comandos usados durante la validación del prototip
 | `docker compose exec fastapi python -m dataset_pipeline.inspect --datasets cmmd --force-dicom-index` | Audita CMMD DICOM + XLSX clínico manual, resuelve CC/MLO desde `ViewCodeSequence`, separa four-view y construye el subconjunto binario CMMD1/D1. | Escribe índices/manifests/rejected; no modifica raw. | Conteos DICOM, cohortes, four-view y benchmark D1. |
 | `docker compose exec fastapi python -m dataset_pipeline.prepare --datasets cmmd` | Convierte solo el subconjunto CMMD1/D1 four-view con labels bilaterales explícitos a PNG 16-bit. | `processed/cmmd/images/` + `manifests/cmmd.csv`; no modifica DICOM/XLSX raw. | `AVAILABLE` y `converted_studies=...`. |
 | `docker compose exec fastapi python -m tests_flow.normal --datasets cmmd --samples 10 --sampling balanced --seed 42 --max-runtime-minutes 30` | Prueba diagnóstica balanceada sobre el subconjunto CMMD1/D1 preparado. | Solo outputs/logs. | 5 benignos/5 malignos si hay al menos cinco de cada clase. |
+| `./scripts/audit-dicom-presentation.sh /workspace/output/normal_tests/<RUN>` | Contrafactual DICOM label-blind sobre los mismos estudios ya diagnosticados: compara conversión actual vs Modality LUT/rescale vs VOI/Window. No ejecuta clasificadores. | Solo `workspace/output/analyses/dicom-presentation-.../`; no modifica raw ni prepared. | Reporte Markdown + JSON/CSV de diferencias; no selecciona una rama por AUC. |
 | `docker compose exec fastapi python -m dataset_pipeline.inspect --datasets cbis_ddsm` | Cruza metadata, reutiliza índice DICOM y construye catálogos/manifiesto de estudios completos. | `manifests/`, `rejected/`, `source_manifest.csv`, cache de índice; no modifica pixels raw. | Conteos de pacientes/vistas y `ensemble_compatible`. |
 | `docker compose exec fastapi python -m dataset_pipeline.inspect --datasets cbis_ddsm --force-dicom-index` | Igual que `inspect`, pero reconstruye headers DICOM. | Reescribe cache del índice; no modifica DICOM. | Mucho más lento; usar solo si cambió el árbol raw. |
 | `docker compose exec fastapi python -m dataset_pipeline.prepare --datasets cbis_ddsm` | Convierte **solo estudios de 4 vistas compatibles** a PNG 16-bit y escribe manifiesto canónico. | Escribe/regenera `processed/cbis_ddsm/images/*.png` y `manifests/cbis_ddsm.csv`; **no limpia, borra ni modifica DICOM raw**. No elimina derivados antiguos no referenciados. | `AVAILABLE`, `converted_studies=...`. |
@@ -1174,3 +1175,27 @@ docker compose exec fastapi \
 ```
 
 Primera inferencia permitida: diagnóstica, `10` estudios balanceados, `seed=42`; no es elegible para freeze.
+
+## v0.29.1 — comparación de escala multi-dataset
+
+`input_scale_comparison` deja de asumir CBIS-DDSM y detecta `dataset_source` desde el run seleccionado. Permite comparar CMMD (y futuros adapters) contra el sample oficial antes/después del crop NYU sin ground truth ni inferencia. No modifica normalización, pesos, threshold ni datasets.
+
+## v0.29.2 — contrafactual de presentación DICOM
+
+v0.29.2 añade un único diagnóstico final de fidelidad de presentación para los DICOM ya inspeccionados. Compara tres ramas sin usar labels, scores o clasificadores:
+
+1. `current_adapter`: conversión productiva actual a PNG 16-bit.
+2. `modality_lut`: aplica Modality LUT/Rescale antes de la presentación.
+3. `voi_presentation`: además aplica VOI LUT o `WindowCenter`/`WindowWidth` con `VOILUTFunction` cuando exista.
+
+Ejecutar sobre un run diagnóstico existente:
+
+```bash
+./scripts/audit-dicom-presentation.sh \
+  /workspace/output/normal_tests/normal-20260816T054908Z
+```
+
+El comando escribe `dicom_presentation_report.md`, `dicom_presentation_summary.json` y CSVs bajo `workspace/output/analyses/dicom-presentation-<timestamp>/`. Por defecto **no persiste copias transformadas de las imágenes**; `--write-images` es opcional para inspección visual. El resultado no puede usarse para elegir una rama por AUC ni para congelar pesos/thresholds.
+
+Este release también alinea la metadata de versión (`VERSION`, `pyproject.toml`, `mammography_agent.__version__` y Model Runner API) en `0.29.2`.
+

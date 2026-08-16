@@ -177,7 +177,24 @@ def _stats_for_paths(paths: list[tuple[str, Path]], *, source: str, stage: str) 
     return rows
 
 
-def _cbis_paths(selected: pd.DataFrame) -> list[tuple[str, Path]]:
+def _detect_dataset_source(selected: pd.DataFrame) -> str:
+    """Resolve a single dataset label without looking at ground truth or model scores."""
+    if "dataset_source" in selected.columns:
+        values = sorted({str(v).strip().lower() for v in selected["dataset_source"].dropna() if str(v).strip()})
+        if len(values) == 1:
+            return values[0]
+        if len(values) > 1:
+            raise ValueError(f"Input-scale comparison requires one dataset per run; found dataset_source={values}")
+    # Backward compatibility for historical runs that predate dataset_source.
+    study_ids = [str(v).strip().upper() for v in selected.get("study_id", pd.Series(dtype=str)).dropna()]
+    if study_ids and all(v.startswith("CBIS-DDSM_") or v.startswith("CBIS_") for v in study_ids):
+        return "cbis_ddsm"
+    if study_ids and all(v.startswith("CMMD_") for v in study_ids):
+        return "cmmd"
+    return "selected_dataset"
+
+
+def _selected_paths(selected: pd.DataFrame) -> list[tuple[str, Path]]:
     rows: list[tuple[str, Path]] = []
     for _, r in selected.iterrows():
         sid = str(r["study_id"])
@@ -203,7 +220,7 @@ def _group_summary(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def compare_input_scale(run_dir: str | Path, output_dir: str | Path | None = None, include_nyu_crop: bool = True) -> Path:
-    """Compare CBIS-DDSM input intensity scale against the official upstream sample.
+    """Compare the selected dataset input intensity scale against the official upstream sample.
 
     This is a classifier-free diagnostic. Raw PNG statistics are always computed.
     When include_nyu_crop=True, the same official NYU crop+optimal-center preprocessing
@@ -232,27 +249,30 @@ def compare_input_scale(run_dir: str | Path, output_dir: str | Path | None = Non
         raise FileNotFoundError(f"Official sample data missing under {runtime_meta / 'sample_data'}")
 
     rows: list[dict] = []
-    rows += _stats_for_paths(_cbis_paths(selected), source="cbis_ddsm", stage="raw_prepared_png")
+    dataset_source = _detect_dataset_source(selected)
+    selected_paths = _selected_paths(selected)
+    rows += _stats_for_paths(selected_paths, source=dataset_source, stage="raw_prepared_png")
     rows += _stats_for_paths(_all_pngs(official_images), source="official_sample", stage="raw_prepared_png")
 
     preprocess_meta: dict[str, object] = {"performed": False}
     if include_nyu_crop:
         work = out / "preprocess_work"
-        cbis_batch = work / "cbis_batch"
-        cbis_images, cbis_data = build_batch(selected, cbis_batch)
-        cbis_pre = work / "cbis_nyu"
+        selected_batch = work / f"{dataset_source}_batch"
+        selected_images, selected_data = build_batch(selected, selected_batch)
+        selected_pre = work / f"{dataset_source}_nyu"
         official_pre = work / "official_nyu"
-        cbis_result = preprocess_model("nyu", f"input-scale-cbis-{out.name}", str(cbis_images), str(cbis_data), str(cbis_pre))
+        selected_result = preprocess_model("nyu", f"input-scale-{dataset_source}-{out.name}", str(selected_images), str(selected_data), str(selected_pre))
         official_result = preprocess_model("nyu", f"input-scale-official-{out.name}", str(official_images), str(official_data), str(official_pre))
-        cbis_cropped = Path(str(cbis_result["cropped_images"]))
+        selected_cropped = Path(str(selected_result["cropped_images"]))
         official_cropped = Path(str(official_result["cropped_images"]))
-        rows += _stats_for_paths(_all_pngs(cbis_cropped), source="cbis_ddsm", stage="nyu_upstream_cropped")
+        rows += _stats_for_paths(_all_pngs(selected_cropped), source=dataset_source, stage="nyu_upstream_cropped")
         rows += _stats_for_paths(_all_pngs(official_cropped), source="official_sample", stage="nyu_upstream_cropped")
         preprocess_meta = {
             "performed": True,
             "classifier_inference_performed": False,
             "model": "nyu",
-            "cbis_preprocess": cbis_result,
+            "dataset_source": dataset_source,
+            "selected_dataset_preprocess": selected_result,
             "official_preprocess": official_result,
         }
 
@@ -264,26 +284,28 @@ def compare_input_scale(run_dir: str | Path, output_dir: str | Path | None = Non
     comparisons = []
     for stage in sorted(df["stage"].unique()):
         g = groups[groups.stage == stage].set_index("source")
-        if not {"cbis_ddsm", "official_sample"}.issubset(g.index):
+        if not {dataset_source, "official_sample"}.issubset(g.index):
             continue
         for metric in ["median_dynamic_range_fraction", "median_normalized_mean", "median_normalized_std", "median_normalized_q99", "median_zero_fraction"]:
-            cbis = float(g.loc["cbis_ddsm", metric])
+            selected_value = float(g.loc[dataset_source, metric])
             official = float(g.loc["official_sample", metric])
             comparisons.append({
                 "stage": stage,
                 "metric": metric,
-                "cbis_ddsm": cbis,
+                "dataset_source": dataset_source,
+                "selected_dataset": selected_value,
                 "official_sample": official,
-                "ratio_cbis_to_official": (cbis / official) if official != 0 else None,
-                "absolute_difference": cbis - official,
+                "ratio_dataset_to_official": (selected_value / official) if official != 0 else None,
+                "absolute_difference": selected_value - official,
             })
     comparison_df = pd.DataFrame(comparisons)
     comparison_df.to_csv(out / "input_scale_comparison.csv", index=False)
 
     summary = {
         "source_run": str(run_dir),
-        "cbis_studies": int(len(selected)),
-        "cbis_raw_images": int(len(_cbis_paths(selected))),
+        "dataset_source": dataset_source,
+        "dataset_studies": int(len(selected)),
+        "dataset_raw_images": int(len(selected_paths)),
         "official_sample_images": int(len(_all_pngs(official_images))),
         "metarepository": meta,
         "nyu_crop_comparison": preprocess_meta,
@@ -307,10 +329,11 @@ def compare_input_scale(run_dir: str | Path, output_dir: str | Path | None = Non
     lines = [
         "# Input Scale Comparison",
         "",
-        "> CPU/classifier-free diagnostic comparing CBIS-DDSM prepared inputs with the official NYU metarepository sample.",
+        "> CPU/classifier-free diagnostic comparing the selected dataset prepared inputs with the official NYU metarepository sample.",
         "",
         f"- **source_run**: {run_dir}",
-        f"- **CBIS studies/images**: {len(selected)} / {len(_cbis_paths(selected))}",
+        f"- **dataset_source**: {dataset_source}",
+        f"- **dataset studies/images**: {len(selected)} / {len(selected_paths)}",
         f"- **official sample images**: {len(_all_pngs(official_images))}",
         f"- **NYU crop comparison performed**: {bool(include_nyu_crop)}",
         "- **ground truth used**: False",

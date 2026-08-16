@@ -1,4 +1,4 @@
-# Verification — through v0.29.0
+# Verification — through v0.29.2
 
 ## Scope
 
@@ -66,3 +66,27 @@
 - Binary CMMD benchmark is CMMD1/D1 only, with explicit bilateral clinical labels. Study label is malignant if either labelled breast is malignant.
 - CMMD2 four-view cases are retained as nonbenchmark audit artifacts because the cohort is malignant/subtype-focused and would confound cohort with class.
 - The audited real CMMD preflight is expected to reproduce 1,775 patients, 5,202 DICOM, 826 four-view and 949 two-view before benchmark filtering.
+
+## v0.29.1 multi-dataset input-scale guard
+
+- `input_scale_comparison` resolves one `dataset_source` from the selected run instead of labelling every dataset as CBIS-DDSM.
+- Raw prepared PNG and official NYU-crop comparison remain classifier-free and label-blind.
+
+## v0.29.2 DICOM presentation counterfactual
+
+- Adds `experiments.dicom_presentation_counterfactual` and `scripts/audit-dicom-presentation.sh`.
+- Reads only selected study/view identity and original DICOM paths; ground truth and model scores are not used.
+- Compares the production adapter conversion against Modality LUT/rescale and VOI presentation branches.
+- For identity rescale/no Modality LUT, the Modality branch must remain byte-identical to the production adapter, including the historical <16-bit left-shift convention.
+- VOI differences are diagnostic only; no branch can be selected by AUC/model score and no raw/prepared dataset bytes are modified.
+- Synthetic test verifies 8-bit MONOCHROME2 + identity rescale + SIGMOID WindowCenter/WindowWidth yields exact current-vs-Modality identity and a distinct VOI branch.
+- Version metadata is coherent at `0.29.2` across `VERSION`, package metadata, `mammography_agent.__version__`, Model Runner API and version-exposure tests.
+
+## v0.29.2 packaged-release evidence
+
+- Source tree: `pytest -q` → **115 passed**.
+- Python `compileall` → PASS.
+- All `config/*.yaml` parsed → PASS.
+- All `scripts/*.sh` pass `bash -n` → PASS.
+- Package checksum manifest covers every packaged file except itself; verification requires zero missing, modified or extra files.
+- The ZIP is re-extracted and the complete test suite is rerun from packaged bytes.

@@ -273,3 +273,16 @@ v0.2 introduced `gmic-runtime`, `nyu-runtime` and `glam-runtime` as three persis
 ## v0.26.1 — bootstrap configuration-addition schema fix
 
 Corrige la entrada de `orientation_counterfactual_diagnostic` para registrar `id: ADD-081`. Añade validación explícita de campos requeridos antes de escribir `configuration_additions.log`, evitando `KeyError` opacos durante bootstrap y cubriendo el contrato con tests de regresión. No cambia modelos, scores, pesos, threshold, dataset ni lógica del contrafactual v0.26.
+
+## 2026-08-16 — v0.29.1: generic multi-dataset input-scale comparison
+
+- `input_scale_comparison` detects a single `dataset_source` from the selected run instead of hardcoding CBIS-DDSM.
+- Preserves the classifier-free comparison against the official NYU sample before and after upstream crop/optimal-center preprocessing.
+- Does not use labels/model scores and does not modify normalization, datasets, model weights, ensemble weights or thresholds.
+
+## 2026-08-16 — v0.29.2: DICOM presentation counterfactual
+
+- Adds a label-blind, classifier-free comparison of the existing adapter conversion, DICOM Modality LUT/rescale and VOI/window presentation transforms on already-inspected studies.
+- Raw and prepared dataset bytes remain immutable; transformed image copies are optional and are written only under analysis output.
+- No branch may be selected by AUC or model scores. The result is evidence about DICOM presentation semantics, not a configuration-selection experiment.
+- Aligns release-version metadata across the package and Model Runner API at `0.29.2`.
