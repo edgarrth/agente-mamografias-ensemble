@@ -220,7 +220,7 @@ def test_cbis_accepts_tcia_description_filename_aliases(tmp_path, monkeypatch):
     assert files["mass_case_description_train_set.csv"].name == "Mass-Training-Description.csv"
 
 
-def test_cbis_v015_download_reuses_existing_dicom_and_never_redownloads_it(tmp_path, monkeypatch):
+def test_cbis_v029_download_is_manual_only_and_reuses_existing_files(tmp_path, monkeypatch):
     _patch_workspace(monkeypatch, tmp_path)
     cfg = _cfg(tmp_path)
     raw = Path(cfg["raw_dir"])
@@ -228,57 +228,29 @@ def test_cbis_v015_download_reuses_existing_dicom_and_never_redownloads_it(tmp_p
     _make_official_files(raw, [_metadata_row("P_00001", "LEFT", "CC", "MALIGNANT", "x")])
     adapter = CBISDDSMDatasetAdapter("cbis_ddsm", cfg)
 
-    # Make the test fixtures authoritative for this test so no network call is necessary.
-    specs = {}
-    import hashlib
-    for name in OFFICIAL_METADATA_FILES:
-        path = raw / name
-        specs[name] = {"url": f"https://example.invalid/{name}", "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-    monkeypatch.setattr(adapter, "_metadata_download_specs", lambda: specs)
-    monkeypatch.setattr(adapter, "_download_url_to_file", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("network should not be called")))
-
     result = adapter.download()
     assert result["status"] == "READY_FOR_INSPECT"
+    assert result["download_performed"] is False
     assert result["dicom_download_performed"] is False
-    assert result["dicom_reused"] is True
-    assert set(result["metadata_reused"]) == set(OFFICIAL_METADATA_FILES)
-    assert result["metadata_downloaded"] == []
+    assert result["metadata_download_performed"] is False
+    assert result["metadata_auto_download"] is False
     assert (raw / "CBIS-DDSM" / "already_here.dcm").exists()
 
 
-def test_cbis_v015_download_acquires_only_missing_small_metadata(tmp_path, monkeypatch):
+def test_cbis_v029_download_never_creates_missing_metadata(tmp_path, monkeypatch):
     _patch_workspace(monkeypatch, tmp_path)
     cfg = _cfg(tmp_path)
     raw = Path(cfg["raw_dir"])
     _write_dicom(raw / "CBIS-DDSM" / "already_here.dcm", "P_00001", "LEFT", "CC", "1.2.3", "1.2.4")
     adapter = CBISDDSMDatasetAdapter("cbis_ddsm", cfg)
 
-    columns = list(_metadata_row("P_00000", "LEFT", "CC", "BENIGN", "x").keys())
-    payloads = {}
-    import hashlib, io
-    for name in OFFICIAL_METADATA_FILES:
-        frame = pd.DataFrame([_metadata_row("P_00001", "LEFT", "CC", "MALIGNANT", "x")], columns=columns) if name == OFFICIAL_METADATA_FILES[0] else pd.DataFrame(columns=columns)
-        payload = frame.to_csv(index=False).encode()
-        payloads[name] = payload
-    specs = {name: {"url": f"https://unit.test/{name}", "sha256": hashlib.sha256(payloads[name]).hexdigest()} for name in OFFICIAL_METADATA_FILES}
-    monkeypatch.setattr(adapter, "_metadata_download_specs", lambda: specs)
-
-    calls = []
-    def fake_download(url, destination, timeout=120):
-        name = Path(destination).name
-        calls.append(name)
-        Path(destination).parent.mkdir(parents=True, exist_ok=True)
-        Path(destination).write_bytes(payloads[name])
-    monkeypatch.setattr(adapter, "_download_url_to_file", fake_download)
-
     result = adapter.download()
-    assert result["status"] == "READY_FOR_INSPECT"
-    assert result["dicom_download_performed"] is False
-    assert result["dicom_reused"] is True
-    assert set(calls) == set(OFFICIAL_METADATA_FILES)
-    assert set(result["metadata_downloaded"]) == set(OFFICIAL_METADATA_FILES)
+    assert result["status"] == "METADATA_REQUIRED"
+    assert result["download_performed"] is False
+    assert result["metadata_download_performed"] is False
+    assert result["metadata_auto_download"] is False
     for name in OFFICIAL_METADATA_FILES:
-        assert (raw / "metadata" / name).exists()
+        assert not (raw / "metadata" / name).exists()
 
 
 def test_cbis_v015_auxiliary_metadata_enriches_cached_series_identity(tmp_path, monkeypatch):

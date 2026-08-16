@@ -12,5 +12,6 @@ psycopg[binary]>=3.2,<4
 streamlit>=1.38,<2
 langgraph>=0.2,<2
 pydicom>=3,<4
+openpyxl>=3.1,<4
 pypng>=0.20220715.0
 psutil>=6,<8

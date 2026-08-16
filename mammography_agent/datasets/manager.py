@@ -2,9 +2,10 @@ from __future__ import annotations
 from ..config import load_yaml
 from .adapters import VinDrDatasetAdapter
 from .cbis_ddsm import CBISDDSMDatasetAdapter
+from .cmmd import CMMDDatasetAdapter
 from ..logging_utils import audit
 
-FACTORY={"cbis_ddsm":CBISDDSMDatasetAdapter,"vindr":VinDrDatasetAdapter}
+FACTORY={"cbis_ddsm":CBISDDSMDatasetAdapter,"cmmd":CMMDDatasetAdapter,"vindr":VinDrDatasetAdapter}
 
 def catalog(): return load_yaml("datasets.yaml").get("datasets",{})
 
@@ -42,7 +43,7 @@ def inspect(keys: list[str], force_dicom_index: bool=False):
     for k in chosen:
         a=adapter(k)
         if hasattr(a,"inspect"):
-            results.append(a.inspect(force_dicom_index=force_dicom_index) if k=="cbis_ddsm" else a.inspect())
+            results.append(a.inspect(force_dicom_index=force_dicom_index) if k in {"cbis_ddsm","cmmd"} else a.inspect())
         else:
             results.append(a.status())
     return results

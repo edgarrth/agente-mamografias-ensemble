@@ -1,4 +1,4 @@
-# Verification — v0.26.1
+# Verification — through v0.29.0
 
 ## Scope
 
@@ -55,3 +55,14 @@
 - Legacy reference path: pinned metarepository GLAM image, PyTorch 1.1.0, CPU.
 - Blackwell path: pinned GLAM source/checkpoint, PyTorch 2.7.1 + CUDA 12.8, GPU.
 - Compare per-image scores and pairwise ordering; a higher AUROC is not considered a reproduction pass.
+
+
+## v0.29.0 CMMD/manual-acquisition guard
+
+- CBIS-DDSM dataset acquisition is fully manual: no URL table, `urlopen`, or metadata auto-download path remains.
+- CMMD requires manually placed DICOM + `metadata/CMMD_clinicaldata_revision.xlsx`.
+- CMMD CC/MLO comes only from DICOM `ViewCodeSequence.CodeValue` (`399162004=CC`, `399368009=MLO`); `ImageLaterality` provides L/R.
+- Exact four-view structure is required; missing/duplicate views are rejected, never synthesized.
+- Binary CMMD benchmark is CMMD1/D1 only, with explicit bilateral clinical labels. Study label is malignant if either labelled breast is malignant.
+- CMMD2 four-view cases are retained as nonbenchmark audit artifacts because the cohort is malignant/subtype-focused and would confound cohort with class.
+- The audited real CMMD preflight is expected to reproduce 1,775 patients, 5,202 DICOM, 826 four-view and 949 two-view before benchmark filtering.

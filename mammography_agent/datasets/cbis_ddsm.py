@@ -5,8 +5,6 @@ from pathlib import Path, PurePosixPath
 import hashlib
 import re
 from typing import Iterable
-from urllib.request import Request, urlopen
-from urllib.error import HTTPError, URLError
 
 import pandas as pd
 
@@ -23,26 +21,13 @@ OFFICIAL_METADATA_FILES = (
     "calc_case_description_test_set.csv",
 )
 
-# Official TCIA supporting-data attachments. The DICOM image collection remains a
-# separate NBIA Data Retriever transfer; these small CSV files can be acquired
-# automatically and atomically without touching an existing DICOM tree.
-OFFICIAL_METADATA_DOWNLOADS = {
-    "mass_case_description_train_set.csv": {
-        "url": "https://wiki.cancerimagingarchive.net/download/attachments/22516629/mass_case_description_train_set.csv?api=v2",
-        "sha256": "a4bcc1c32bfd040212737e6e8c304819334abe717cfefff56431dc50ae6db723",
-    },
-    "mass_case_description_test_set.csv": {
-        "url": "https://wiki.cancerimagingarchive.net/download/attachments/22516629/mass_case_description_test_set.csv?api=v2",
-        "sha256": "60f0b4504ec024106bbdd1555030d220163ea9da0ea4688473a4c9c3e8ab0457",
-    },
-    "calc_case_description_train_set.csv": {
-        "url": "https://wiki.cancerimagingarchive.net/download/attachments/22516629/calc_case_description_train_set.csv?api=v2",
-        "sha256": "3c7b07e8202f66709f446b9695e96c5d17484a65fda6a24d0170a0c1b81d56e3",
-    },
-    "calc_case_description_test_set.csv": {
-        "url": "https://wiki.cancerimagingarchive.net/download/attachments/22516629/calc_case_description_test_set.csv?api=v2",
-        "sha256": "03a2f72efb6ed29f417e07f4598950e6a1e02e6b11250ff516ebe7924ace3689",
-    },
+# Expected hashes are retained only for local integrity validation. v0.29.0 never
+# downloads these files; the researcher places the official TCIA CSVs manually.
+OFFICIAL_METADATA_SHA256 = {
+    "mass_case_description_train_set.csv": "a4bcc1c32bfd040212737e6e8c304819334abe717cfefff56431dc50ae6db723",
+    "mass_case_description_test_set.csv": "60f0b4504ec024106bbdd1555030d220163ea9da0ea4688473a4c9c3e8ab0457",
+    "calc_case_description_train_set.csv": "3c7b07e8202f66709f446b9695e96c5d17484a65fda6a24d0170a0c1b81d56e3",
+    "calc_case_description_test_set.csv": "03a2f72efb6ed29f417e07f4598950e6a1e02e6b11250ff516ebe7924ace3689",
 }
 
 AUXILIARY_METADATA_FILENAME = "metadata.csv"
@@ -235,16 +220,11 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
             )
         return selected
 
-    def _metadata_download_specs(self) -> dict[str, dict[str, str]]:
-        configured = self.cfg.get("official_metadata_downloads") or {}
-        specs = {}
-        for name in OFFICIAL_METADATA_FILES:
-            base = dict(OFFICIAL_METADATA_DOWNLOADS[name])
-            override = configured.get(name, {}) if isinstance(configured, dict) else {}
-            if isinstance(override, dict):
-                base.update({k: str(v) for k, v in override.items() if v is not None})
-            specs[name] = base
-        return specs
+    def _metadata_expected_sha256(self, canonical_name: str) -> str:
+        configured = self.cfg.get("official_metadata_sha256") or {}
+        if isinstance(configured, dict) and configured.get(canonical_name):
+            return str(configured[canonical_name])
+        return OFFICIAL_METADATA_SHA256.get(canonical_name, "")
 
     def _validate_metadata_table(self, path: Path, canonical_name: str, verify_sha256: bool = False) -> dict:
         result = {"file": canonical_name, "path": str(path), "valid": False, "sha256": "", "missing_columns": []}
@@ -253,7 +233,7 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
             header = _canonical_metadata_columns(pd.read_csv(path, nrows=0))
             missing = [c for c in REQUIRED_METADATA_COLUMNS if c not in header.columns]
             result.update({"sha256": digest, "missing_columns": missing})
-            expected = self._metadata_download_specs().get(canonical_name, {}).get("sha256", "")
+            expected = self._metadata_expected_sha256(canonical_name)
             hash_ok = (not verify_sha256) or (not expected) or digest.lower() == str(expected).lower()
             result["expected_sha256"] = expected
             result["sha256_valid"] = bool(hash_ok)
@@ -265,84 +245,6 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
         except Exception as exc:
             result["error"] = f"{type(exc).__name__}: {exc}"
         return result
-
-    @staticmethod
-    def _download_url_to_file(url: str, destination: Path, timeout: int = 120) -> None:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        temp = destination.with_suffix(destination.suffix + ".part")
-        if temp.exists():
-            temp.unlink()
-        request = Request(url, headers={"User-Agent": "mammography-ai-agent/0.15 research prototype"})
-        try:
-            with urlopen(request, timeout=timeout) as response, temp.open("wb") as out:
-                while True:
-                    chunk = response.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    out.write(chunk)
-            temp.replace(destination)
-        except Exception:
-            if temp.exists():
-                temp.unlink()
-            raise
-
-    def _ensure_official_metadata(self) -> dict:
-        """Acquire only the four small official CSV tables; never transfer DICOM bytes."""
-        p = self._cbis_paths()
-        metadata_dir = p["raw"] / "metadata"
-        metadata_dir.mkdir(parents=True, exist_ok=True)
-        specs = self._metadata_download_specs()
-        candidates = self._metadata_candidates()
-        downloaded, reused, failed = [], [], []
-        validations = {}
-
-        for name in OFFICIAL_METADATA_FILES:
-            existing = candidates.get(name, [])
-            if existing:
-                # _metadata_files already prevents silently selecting non-identical duplicates.
-                selected = sorted(existing, key=lambda x: (len(x.parts), str(x)))[0]
-                validation = self._validate_metadata_table(selected, name, verify_sha256=bool(specs[name].get("sha256")))
-                validations[name] = validation
-                if validation["valid"]:
-                    reused.append(name)
-                    continue
-                failed.append({"file": name, "path": str(selected), "error": validation.get("error", "invalid metadata")})
-                continue
-
-            dest = metadata_dir / name
-            try:
-                self._download_url_to_file(specs[name]["url"], dest)
-                validation = self._validate_metadata_table(dest, name, verify_sha256=bool(specs[name].get("sha256")))
-                validations[name] = validation
-                if not validation["valid"]:
-                    failed.append({"file": name, "path": str(dest), "error": validation.get("error", "invalid metadata")})
-                    continue
-                downloaded.append(name)
-            except (HTTPError, URLError, TimeoutError, OSError, ValueError) as exc:
-                failed.append({"file": name, "path": str(dest), "error": f"{type(exc).__name__}: {exc}"})
-            except Exception as exc:
-                failed.append({"file": name, "path": str(dest), "error": f"{type(exc).__name__}: {exc}"})
-
-        # Re-scan because newly downloaded files were not present in the initial candidates.
-        final_candidates = self._metadata_candidates()
-        complete = all(final_candidates.get(name) for name in OFFICIAL_METADATA_FILES) and not failed
-        audit(
-            "CBIS_DDSM_METADATA_DOWNLOAD",
-            dataset=self.key,
-            downloaded=downloaded,
-            reused=reused,
-            failed=failed,
-            complete=bool(complete),
-            dicom_download_performed=False,
-        )
-        return {
-            "metadata_complete": bool(complete),
-            "metadata_downloaded": downloaded,
-            "metadata_reused": reused,
-            "metadata_failed": failed,
-            "metadata_validation": validations,
-            "metadata_dir": str(metadata_dir),
-        }
 
     def _auxiliary_metadata_candidates(self) -> list[Path]:
         raw = self._cbis_paths()["raw"]
@@ -466,7 +368,7 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
         instructions.write_text(
             "# CBIS-DDSM classification metadata required\n\n"
             "NBIA Data Retriever transfers the DICOM image collection; the four classification CSV tables are separate TCIA supporting data.\n\n"
-            "In v0.16, run `python -m dataset_pipeline.download --datasets cbis_ddsm` to acquire/verify these four small CSVs automatically. Existing valid copies are reused. If automatic metadata download is unavailable, place them under this directory (recommended: `metadata/`):\n\n"
+            "v0.29.0 never downloads metadata automatically. Place the four official TCIA CSVs manually under this directory (recommended: `metadata/`):\n\n"
             + "\n".join(f"- `{name}`" for name in OFFICIAL_METADATA_FILES)
             + "\n\nAccepted alternate downloaded names are also recognized: `Mass-Training-Description.csv`, `Mass-Test-Description.csv`, `Calc-Training-Description.csv`, and `Calc-Test-Description.csv`.\n"
             "Do not edit pathology values or image paths. The adapter uses the official `pathology` field as ground truth and records SHA-256 hashes during inspection.\n\n"
@@ -512,76 +414,52 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
             "official_metadata_expected": list(OFFICIAL_METADATA_FILES),
             "dicom_present": dicom_present,
             "dicom_auto_download": False,
-            "metadata_auto_download": True,
+            "metadata_auto_download": False,
             "auxiliary_metadata_csv": [str(x) for x in aux_candidates],
-            "adapter": "official_tcia_cbis_ddsm_v016",
+            "adapter": "official_tcia_cbis_ddsm_v029",
             "requires_four_views_for_ensemble": True,
         }
 
     def download(self) -> dict:
-        """Prepare CBIS-DDSM acquisition without ever re-downloading the DICOM collection.
-
-        v0.16 automatically acquires/verifies only the four small official classification
-        CSVs. DICOM transfer remains an explicit TCIA/NBIA user action. Existing DICOM files
-        are detected and reused byte-for-byte.
-        """
+        """Write manual acquisition guidance only; v0.29.0 performs no network transfer."""
         p = self._cbis_paths()
         p["raw"].mkdir(parents=True, exist_ok=True)
         if p["canonical"].exists():
             audit("DATASET_REUSED", dataset=self.key, status="AVAILABLE")
-            return {**self.status(), "action": "reused", "dicom_download_performed": False}
+            return {**self.status(), "action": "reused", "download_performed": False}
 
         instructions = p["raw"] / "DOWNLOAD_INSTRUCTIONS.md"
         instructions.write_text(
-            "# CBIS-DDSM — v0.16 acquisition policy\n\n"
-            "## DICOM image collection\n\n"
-            "The prototype NEVER downloads or re-downloads the ~163 GB DICOM collection automatically. "
-            "Use the official TCIA/NBIA Data Retriever and place the complete downloaded directory tree anywhere under this directory. "
-            "Existing DICOM files are always reused; do not flatten or rename them.\n\n"
-            "## Classification metadata\n\n"
-            "The four small official TCIA classification CSV files are downloaded and SHA-256/column validated automatically by `dataset_pipeline.download`. "
-            "Valid existing copies are reused and are not downloaded again. They are stored under `metadata/` when acquisition is necessary.\n\n"
+            "# CBIS-DDSM manual acquisition policy — v0.29.0\n\n"
+            "The prototype never downloads DICOM or classification metadata. Use TCIA/NBIA manually for the DICOM collection and place the four official case-description CSV files manually under `metadata/`.\n\n"
             + "\n".join(f"- `{name}`" for name in OFFICIAL_METADATA_FILES)
-            + "\n\n`metadata.csv`, when present, is optional auxiliary TCIA series metadata. v0.16 may use PatientID/StudyInstanceUID/SeriesInstanceUID to enrich view resolution, but it is NEVER used as pathology ground truth.\n\n"
-            "The adapter generates `source_manifest.csv` only after inspection. Ground truth comes only from the official `pathology` field. Missing standard views are never duplicated or synthesized.\n\n"
+            + "\n\nExisting files are validated locally (columns and expected SHA-256 where configured). Raw files are never modified.\n\n"
             f"Official information: {self.cfg['official_information']}\n",
             encoding="utf-8",
         )
 
-        dicom_present_before = self._raw_has_dicom()
-        metadata_result = self._ensure_official_metadata()
         current = self.status()
-        if metadata_result["metadata_failed"]:
-            state = "METADATA_DOWNLOAD_FAILED"
-        elif not self._raw_has_dicom():
-            state = "DICOM_DOWNLOAD_REQUIRED"
-        else:
-            state = "READY_FOR_INSPECT"
+        validation = {}
+        for name, path in self._metadata_files(strict=False).items():
+            validation[name] = self._validate_metadata_table(path, name, verify_sha256=True)
         result = {
             **current,
-            **metadata_result,
-            "status": state,
             "instructions": str(instructions),
+            "download_performed": False,
             "dicom_download_performed": False,
-            "dicom_reused": bool(dicom_present_before),
-            "dicom_action": "reused_existing_tree" if dicom_present_before else "manual_tcia_nbia_required",
+            "metadata_download_performed": False,
+            "metadata_validation": validation,
             "next_action": (
-                "Run dataset_pipeline.inspect; DICOM and metadata are present."
-                if state == "READY_FOR_INSPECT"
-                else "Complete the official TCIA/NBIA DICOM transfer under raw_dir, then rerun status/inspect."
-                if state == "DICOM_DOWNLOAD_REQUIRED"
-                else "Review metadata_failed; existing DICOM files were not touched."
+                "Run dataset_pipeline.inspect; DICOM and all four metadata files are present."
+                if current["status"] == "READY_FOR_INSPECT"
+                else "Place the four official CSVs manually under raw/cbis_ddsm/metadata/."
+                if current["status"] == "METADATA_REQUIRED"
+                else "Complete the official TCIA/NBIA DICOM transfer manually under raw_dir."
+                if current["status"] == "DICOM_DOWNLOAD_REQUIRED"
+                else "Complete the manual TCIA acquisition, then rerun status/inspect."
             ),
         }
-        audit(
-            "DATASET_DOWNLOAD_PREPARED",
-            dataset=self.key,
-            status=state,
-            dicom_present=self._raw_has_dicom(),
-            dicom_download_performed=False,
-            metadata_downloaded=metadata_result["metadata_downloaded"],
-            metadata_reused=metadata_result["metadata_reused"],
-        )
+        audit("DATASET_DOWNLOAD_MANUAL_ACTION_REQUIRED", dataset=self.key, status=current["status"], instructions=str(instructions))
         return result
 
     def _load_official_metadata(self) -> pd.DataFrame:
@@ -1106,7 +984,7 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
                 "status": "DICOM_DOWNLOAD_REQUIRED",
                 "raw_dir": str(p["raw"]),
                 **guidance,
-                "next_action": "Download the official CBIS-DDSM DICOM collection with TCIA/NBIA Data Retriever under raw_dir. v0.16 will reuse it and never auto-download DICOM bytes.",
+                "next_action": "Download the official CBIS-DDSM DICOM collection with TCIA/NBIA Data Retriever under raw_dir. v0.29.0 will reuse it and never download DICOM bytes.",
                 "dicom_index_started": False,
             }
             audit("CBIS_DDSM_DICOM_REQUIRED", dataset=self.key, raw_dir=str(p["raw"]))
@@ -1164,7 +1042,7 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
             "unresolved_manifest": str(p["unresolved"]),
             "dicom_index": str(p["dicom_index"]),
             "ensemble_compatible": bool(len(complete)),
-            "note": "Current NYU/DMV-CNN exam-level path requires all four standard views. v0.16 may recover standard views from optional TCIA metadata.csv SeriesInstanceUID identity, but missing views are never synthesized and pathology still comes only from the four official case-description CSVs.",
+            "note": "Current NYU/DMV-CNN exam-level path requires all four standard views. v0.29.0 may recover standard views from optional TCIA metadata.csv SeriesInstanceUID identity, but missing views are never synthesized and pathology still comes only from the four official case-description CSVs.",
         }
         audit("CBIS_DDSM_INSPECTED", **{k: v for k, v in result.items() if k not in {"pathology_counts", "note"}})
         return result
@@ -1238,7 +1116,7 @@ class CBISDDSMDatasetAdapter(ManifestDatasetAdapter):
             dataset=self.key,
             studies=len(df),
             manifest=str(p["canonical"]),
-            adapter="official_tcia_cbis_ddsm",
+            adapter="official_tcia_cbis_ddsm_v029",
         )
         return {
             **inspection,

@@ -280,11 +280,9 @@ additions:
   reason: The CBIS-DDSM image collection is large and is already acquired through the official TCIA/NBIA mechanism. Re-running
     a prototype command must not duplicate ~163 GB, consume bandwidth or overwrite research inputs.
 - id: ADD-051
-  name: cbis_ddsm_automatic_official_metadata_acquisition
-  value: download only missing official mass/calc train/test case-description CSVs; validate SHA-256 and required columns;
-    reuse valid copies
-  reason: The four small supporting tables are required for pathology ground truth but are separate from the NBIA DICOM transfer.
-    Automating this small deterministic step removes manual curl/file-placement work without bypassing image access controls.
+  name: cbis_ddsm_manual_official_metadata_policy_v029
+  value: never download mass/calc train/test case-description CSVs; validate manually placed files and expected SHA-256/columns
+  reason: The researcher explicitly requires dataset acquisition to remain manual. This also prevents network-side changes from altering research inputs implicitly.
 - id: ADD-052
   name: cbis_ddsm_auxiliary_series_metadata
   value: optional metadata.csv PatientID/StudyInstanceUID/SeriesInstanceUID enrichment joined by unique SeriesInstanceUID;
@@ -496,3 +494,16 @@ additions:
   value: compare GLAM predictions on the official 4-exam sample between the pinned upstream PyTorch 1.1 CPU image and the PyTorch 2.7/CUDA 12.8 Blackwell compatibility image; compare per-image scores, pairwise ordering and official AUROC/AUPRC reproduction
   reason: v0.28.1 upstream validation reproduces GMIC and NYU to the published three-decimal references, but GLAM changes image/breast ordering (observed 0.800/0.800 vs expected 0.700/0.733). A direct legacy-runtime differential isolates whether the mismatch was introduced by Blackwell compatibility changes or is already present in the current upstream artifact.
   version: 0.28.2
+
+- id: ADD-087
+  name: cmmd_official_tcia_adapter_v029
+  value: manual DICOM + CMMD_clinicaldata_revision.xlsx; ViewCodeSequence 399162004=CC and 399368009=MLO; ImageLaterality=L/R
+  reason: The audited TCIA CMMD DICOM release has empty ViewPosition but complete ViewCodeSequence semantics.
+- id: ADD-088
+  name: cmmd_binary_benchmark_policy_v029
+  value: expose CMMD1/D1 exact four-view studies with explicit bilateral clinical labels; study malignant if either breast is malignant; retain D2 as nonbenchmark audit cohort
+  reason: The observed four-view pool is dominated by malignant-only D2, so mixing D1 and D2 would confound binary class with cohort.
+- id: ADD-089
+  name: dataset_network_download_disabled_v029
+  value: CBIS-DDSM and CMMD adapters perform no network dataset downloads; missing files return actionable manual acquisition status
+  reason: Preserve explicit researcher-controlled acquisition and immutable raw inputs.

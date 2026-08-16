@@ -149,7 +149,10 @@ Esta sección centraliza los comandos usados durante la validación del prototip
 | `docker compose exec fastapi python -m model_tools.validate_gpu --models all --force-rebuild` | Igual que el anterior, pero fuerza reconstrucción de todas las imágenes GPU seleccionadas aunque su revisión ya coincida. Úselo solo cuando se quiera validar bytes nuevos explícitamente. | Rebuild de imágenes seleccionadas, invalida/renueva probes y escribe reporte; no toca datasets. | `rebuild_performed=true` por modelo y validación completa. |
 | `./scripts/validate-models.sh all` o `./scripts/validate-models.sh gmic nyu` | Wrapper host del comando integrado anterior; evita escribir el `docker compose exec ...` completo y acepta uno o más modelos. | Los mismos efectos de `model_tools.validate_gpu`; no modifica datasets. | Mismo JSON/resumen de validación. |
 | `docker compose exec fastapi python -m dataset_pipeline.status` | Consulta estado de datasets. | Nada. | `AVAILABLE`, `READY_FOR_INSPECT`, etc. |
-| `docker compose exec fastapi python -m dataset_pipeline.download --datasets cbis_ddsm` | Reutiliza DICOM existentes y descarga/verifica solo metadata oficial pequeña si falta. | Puede crear CSV en `raw/cbis_ddsm/metadata`; **nunca re-descarga los DICOM**. | `READY_FOR_INSPECT`, `dicom_reused=true`. |
+| `docker compose exec fastapi python -m dataset_pipeline.download --datasets cbis_ddsm` | Solo escribe/actualiza instrucciones y valida archivos ya presentes. **No descarga DICOM ni CSV**. | Puede escribir `DOWNLOAD_INSTRUCTIONS.md`; no modifica raw. | Estado manual (`READY_FOR_INSPECT`, `METADATA_REQUIRED`, `DICOM_DOWNLOAD_REQUIRED`, etc.). |
+| `docker compose exec fastapi python -m dataset_pipeline.inspect --datasets cmmd --force-dicom-index` | Audita CMMD DICOM + XLSX clínico manual, resuelve CC/MLO desde `ViewCodeSequence`, separa four-view y construye el subconjunto binario CMMD1/D1. | Escribe índices/manifests/rejected; no modifica raw. | Conteos DICOM, cohortes, four-view y benchmark D1. |
+| `docker compose exec fastapi python -m dataset_pipeline.prepare --datasets cmmd` | Convierte solo el subconjunto CMMD1/D1 four-view con labels bilaterales explícitos a PNG 16-bit. | `processed/cmmd/images/` + `manifests/cmmd.csv`; no modifica DICOM/XLSX raw. | `AVAILABLE` y `converted_studies=...`. |
+| `docker compose exec fastapi python -m tests_flow.normal --datasets cmmd --samples 10 --sampling balanced --seed 42 --max-runtime-minutes 30` | Prueba diagnóstica balanceada sobre el subconjunto CMMD1/D1 preparado. | Solo outputs/logs. | 5 benignos/5 malignos si hay al menos cinco de cada clase. |
 | `docker compose exec fastapi python -m dataset_pipeline.inspect --datasets cbis_ddsm` | Cruza metadata, reutiliza índice DICOM y construye catálogos/manifiesto de estudios completos. | `manifests/`, `rejected/`, `source_manifest.csv`, cache de índice; no modifica pixels raw. | Conteos de pacientes/vistas y `ensemble_compatible`. |
 | `docker compose exec fastapi python -m dataset_pipeline.inspect --datasets cbis_ddsm --force-dicom-index` | Igual que `inspect`, pero reconstruye headers DICOM. | Reescribe cache del índice; no modifica DICOM. | Mucho más lento; usar solo si cambió el árbol raw. |
 | `docker compose exec fastapi python -m dataset_pipeline.prepare --datasets cbis_ddsm` | Convierte **solo estudios de 4 vistas compatibles** a PNG 16-bit y escribe manifiesto canónico. | Escribe/regenera `processed/cbis_ddsm/images/*.png` y `manifests/cbis_ddsm.csv`; **no limpia, borra ni modifica DICOM raw**. No elimina derivados antiguos no referenciados. | `AVAILABLE`, `converted_studies=...`. |
@@ -950,29 +953,16 @@ Si los DICOM de CBIS-DDSM existen pero faltan uno o más de los cuatro CSV ofici
 
 ## v0.15 — CBIS-DDSM sin re-descarga DICOM
 
-La política de adquisición queda separada:
+La política histórica v0.15 separó DICOM de metadata. **Desde v0.29.0 la política es más estricta:** el prototipo no descarga ningún archivo de dataset. Tanto los DICOM como los cuatro CSV oficiales se adquieren manualmente y el adapter solo los localiza/valida.
 
 ```text
 dataset_pipeline.download --datasets cbis_ddsm
         │
         ├── DICOM (~163 GB) -> NUNCA auto-download
-        │                     ├── si existe: REUSE
-        │                     └── si falta: DICOM_DOWNLOAD_REQUIRED
-        │
-        └── 4 case-description CSV
-                              ├── si existen y son válidos: REUSE
-                              └── si faltan: descarga TCIA + SHA-256 + validación de columnas
+        └── 4 case-description CSV -> NUNCA auto-download
+
+Missing file -> instrucción/estado accionable; no red.
 ```
-
-Por tanto, ejecutar nuevamente:
-
-```bash
-docker compose exec fastapi \
-  python -m dataset_pipeline.download \
-  --datasets cbis_ddsm
-```
-
-**no vuelve a descargar la colección DICOM**. Con un workspace ya poblado, solo verifica/reutiliza los DICOM y los cuatro CSV. Si falta un CSV pequeño, descarga únicamente ese metadata.
 
 ### `metadata.csv` auxiliar
 
@@ -1137,3 +1127,50 @@ The command runs the existing Blackwell GMIC/NYU/GLAM images on `sample_data/`, 
 ## v0.28.2 GLAM runtime differential
 
 When the official upstream reference validation passes GMIC/NYU but fails GLAM, run `python -m experiments.glam_runtime_differential`. It executes the pinned upstream GLAM PyTorch 1.1 runtime on CPU and the Blackwell PyTorch 2.7/CUDA 12.8 runtime on the same official 4-exam sample, then compares raw image scores, ordering, AUROC and AUPRC. The legacy path changes only the matplotlib backend from TkAgg to Agg for headless execution; it does not alter model architecture, checkpoint or intended inference semantics.
+
+
+## v0.29.0 — CMMD adapter + adquisición manual estricta
+
+v0.29.0 incorpora `cmmd` como dataset nativo y elimina la adquisición automática de metadata CBIS-DDSM. Los cuatro CSV de CBIS y `CMMD_clinicaldata_revision.xlsx` se colocan manualmente; el proyecto no usa URLs ni `urlopen` para descargar datasets.
+
+Hallazgos de preflight CMMD usados para diseñar el adapter (descarga TCIA auditada el 16-08-2026):
+
+- 1,775 pacientes / 1,775 estudios / 5,202 DICOM.
+- 949 pacientes con 2 imágenes y 826 con 4 imágenes.
+- `ViewPosition` vacío; CC/MLO se resuelve por `ViewCodeSequence.CodeValue`: `399162004=CC`, `399368009=MLO`.
+- `ImageLaterality` resuelve L/R.
+- 5,200 imágenes con `BitsStored=8`; dos imágenes de `D1-1343` usan 16 bits y pertenecen al grupo no four-view observado.
+- El XLSX tiene 1,872 filas para 1,775 pacientes; 97 IDs tienen dos filas bilaterales y 30 tienen una mama benigna y la otra maligna. A nivel estudio, `MALIGNANT` significa al menos una mama explícitamente maligna.
+- Entre los 826 four-view: 81 son D1 y 745 D2. El preflight observado produjo D1=61 benignos, 2 malignos consistentes y 18 bilaterales mixtos; D2=733 malignos consistentes y 12 bilaterales mixtos.
+
+### Política de benchmark CMMD
+
+La clave `cmmd` **no mezcla D1 y D2 como benchmark binario**. D2 es un cohort de malignidad/subtipos y usar los 826 four-view juntos haría que clase y cohort estuvieran fuertemente confundidos. El manifiesto canónico de `cmmd` se limita a **CMMD1/D1, cuatro vistas exactas y labels clínicos explícitos para ambas mamas**. Los D2 four-view se conservan en `cmmd_nonbenchmark_four_view.csv` para análisis posterior de dominio/malignidad, sin entrar al benchmark binario.
+
+Archivos esperados manualmente:
+
+```text
+workspace/datasets/raw/cmmd/
+├── ... árbol DICOM TCIA ...
+└── metadata/
+    └── CMMD_clinicaldata_revision.xlsx
+```
+
+Inspección limpia:
+
+```bash
+docker compose exec fastapi \
+  python -m dataset_pipeline.inspect \
+  --datasets cmmd \
+  --force-dicom-index
+```
+
+Preparación:
+
+```bash
+docker compose exec fastapi \
+  python -m dataset_pipeline.prepare \
+  --datasets cmmd
+```
+
+Primera inferencia permitida: diagnóstica, `10` estudios balanceados, `seed=42`; no es elegible para freeze.
