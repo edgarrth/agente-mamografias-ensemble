@@ -1,4 +1,4 @@
-# Verification — through v0.29.2
+# Verification — through v0.30.0
 
 ## Scope
 
@@ -90,3 +90,13 @@
 - All `scripts/*.sh` pass `bash -n` → PASS.
 - Package checksum manifest covers every packaged file except itself; verification requires zero missing, modified or extra files.
 - The ZIP is re-extracted and the complete test suite is rerun from packaged bytes.
+
+## v0.30.0 RSNA adapter evidence
+
+- Added native `rsna` registration and `RSNADatasetAdapter`.
+- Added `RSNA_REQUIRED_FOUR_VIEWS_V1` and deterministic label-blind repeated-view selection.
+- Added explicit audit manifests for selected/unselected/non-standard/incomplete/conflicting RSNA records.
+- Added pydicom compressed-pixel plugins pinned to the versions validated during RSNA preflight.
+- Updated version metadata to `0.30.0`.
+- Repository test suite executed against the packaged source: `118 passed`.
+- This packaged source intentionally contains no current RSNA/CMMD/CBIS dataset payloads; research workspace data remains external on the host bind mount.

@@ -286,3 +286,12 @@ Corrige la entrada de `orientation_counterfactual_diagnostic` para registrar `id
 - Raw and prepared dataset bytes remain immutable; transformed image copies are optional and are written only under analysis output.
 - No branch may be selected by AUC or model scores. The result is evidence about DICOM presentation semantics, not a configuration-selection experiment.
 - Aligns release-version metadata across the package and Model Runner API at `0.29.2`.
+
+## 2026-08-17 — v0.30.0: RSNA dataset-aware adapter
+
+- Adds `RSNADatasetAdapter` for the manually acquired RSNA Breast Cancer Detection train distribution.
+- Requires the four standard views but retains studies with repeated CC/MLO images.
+- Resolves repeated canonical views using deterministic label-blind SHA-256 selection and writes explicit selected/unselected audit manifests.
+- Uses only `train.csv:cancer` for breast/study ground truth and rejects within-breast label conflicts.
+- Adds reproducible JPEG Lossless/JPEG 2000 pydicom plugins validated against the audited RSNA runtime sample.
+- Does not download RSNA automatically and never modifies raw DICOM/CSV inputs.

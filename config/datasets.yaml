@@ -74,3 +74,30 @@ datasets:
     processed_dir: /workspace/datasets/processed/vindr
     source_manifest: /workspace/datasets/raw/vindr/source_manifest.csv
     canonical_manifest: /workspace/datasets/manifests/vindr.csv
+  rsna:
+    name: RSNA Screening Mammography Breast Cancer Detection
+    enabled: true
+    official_information: https://www.kaggle.com/competitions/rsna-breast-cancer-detection
+    download_policy: explicit_manual
+    automatic_download: false
+    automatic_metadata_download: false
+    reason: The official RSNA train distribution is acquired manually by the researcher. The adapter never downloads or modifies raw DICOM/CSV files.
+    raw_dir: /workspace/datasets/raw/rsna
+    processed_dir: /workspace/datasets/processed/rsna
+    source_manifest: /workspace/datasets/raw/rsna/source_manifest.csv
+    canonical_manifest: /workspace/datasets/manifests/rsna.csv
+    adapter: official_rsna_challenge_train_v030
+    train_metadata_file: train.csv
+    train_images_dir: train_images
+    dicom_index_cache: /workspace/runtime/dataset_cache/rsna_dicom_index.csv
+    reuse_dicom_index_cache: true
+    selected_views_manifest: /workspace/datasets/manifests/rsna_selected_views.csv
+    all_required_four_view_manifest: /workspace/datasets/manifests/rsna_all_required_four_view.csv
+    unselected_duplicate_views_manifest: /workspace/datasets/rejected/rsna_unselected_duplicate_views.csv
+    nonstandard_views_manifest: /workspace/datasets/rejected/rsna_nonstandard_views.csv
+    incomplete_manifest: /workspace/datasets/rejected/rsna_incomplete_studies.csv
+    conflicts_manifest: /workspace/datasets/rejected/rsna_label_conflicts.csv
+    require_four_views_for_ensemble: true
+    benchmark_policy: RSNA_REQUIRED_FOUR_VIEWS_V1
+    duplicate_view_selection_policy: DETERMINISTIC_LABEL_BLIND_SHA256_V1
+    ground_truth_policy: study malignant if either breast has cancer=1; otherwise benign when both breasts have consistent cancer=0 labels
