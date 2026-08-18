@@ -505,5 +505,25 @@ additions:
   reason: The observed four-view pool is dominated by malignant-only D2, so mixing D1 and D2 would confound binary class with cohort.
 - id: ADD-089
   name: dataset_network_download_disabled_v029
-  value: CBIS-DDSM and CMMD adapters perform no network dataset downloads; missing files return actionable manual acquisition status
+  value: CBIS-DDSM, CMMD and RSNA adapters perform no network dataset downloads; missing files return actionable manual acquisition status
   reason: Preserve explicit researcher-controlled acquisition and immutable raw inputs.
+- id: ADD-090
+  name: rsna_official_train_adapter_v030
+  value: manually acquired train.csv + train_images; no automatic network download; raw inputs immutable
+  reason: RSNA is the large labelled cohort selected for the next formal ensemble experiment and requires a dataset-aware adapter with explicit provenance.
+- id: ADD-091
+  name: rsna_required_four_views_v1
+  value: require at least one L_CC, R_CC, L_MLO and R_MLO per patient; do not require exactly four DICOM objects
+  reason: All 11,913 audited RSNA train patients contain the four required standard views, while 3,680 also contain repeated or additional images; exact-four filtering would discard valid patients and malignant cases unnecessarily.
+- id: ADD-092
+  name: rsna_duplicate_view_selection_v1
+  value: select one image per repeated canonical view by deterministic label-blind SHA-256 over policy_id, patient_id, canonical_view and image_id
+  reason: Repeated CC/MLO views must be resolved reproducibly without using cancer labels, BI-RADS, pixels, model scores, AUC or filesystem ordering.
+- id: ADD-093
+  name: rsna_compressed_dicom_codecs_v030
+  value: pylibjpeg 2.1.0 + pylibjpeg-libjpeg 2.4.0 + pylibjpeg-openjpeg 2.5.0
+  reason: The audited RSNA train DICOMs use JPEG Lossless SV1 and JPEG 2000 Lossless; these plugin versions decoded a targeted 20-image compatibility sample with 20/20 success on the application runtime.
+- id: ADD-094
+  name: rsna_study_ground_truth_v1
+  value: cancer is read only from train.csv; breast labels must be internally consistent; study is malignant if either breast is malignant, otherwise benign when both breasts are benign
+  reason: Preserve the official cancer label as the only binary ground-truth source and reject contradictory breast labels rather than inventing a resolution.

@@ -15,8 +15,8 @@ def test_all_configuration_additions_have_required_fields_and_unique_ids():
         assert required <= set(item), f"entry #{index} missing {sorted(required - set(item))}: {item}"
         ids.append(item["id"])
     assert len(ids) == len(set(ids)), "configuration addition ids must be unique"
-    assert additions[-1]["id"] == "ADD-089"
-    assert additions[-1]["name"] == "dataset_network_download_disabled_v029"
+    assert additions[-1]["id"] == "ADD-094"
+    assert additions[-1]["name"] == "rsna_study_ground_truth_v1"
 
 
 def test_configuration_additions_logger_runs_with_packaged_config(tmp_path, monkeypatch):

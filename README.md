@@ -136,8 +136,8 @@ Esta sección centraliza los comandos usados durante la validación del prototip
 | `docker compose logs -f model-runner` | Sigue el ciclo de inferencia del Model Runner: espera/adquisición GPU, inicio de contenedor temporal, inicio/fin de comando, éxito/fallo y métricas resumidas. | Nada. | Eventos de inferencia visibles sin spam de healthchecks. |
 | `./scripts/logs.sh` | Wrapper para seguir en vivo los logs de `fastapi` y `model-runner` con un tail inicial configurable (`TAIL_LINES=200 ./scripts/logs.sh`). | Nada. | Logs operativos de servicios; eventos CLI persisten además en `workspace/logs/*.jsonl`. |
 | `tail -f workspace/logs/audit.jsonl workspace/logs/model_runner.jsonl` | Sigue la auditoría persistente de CLI/pipeline y Runner desde el host. | Nada. | Eventos JSONL incluso cuando el comando se ejecutó mediante `docker compose exec`. |
-| `docker compose exec fastapi cat /app/VERSION` | Verifica versión del código dentro de FastAPI. | Nada. | `0.29.2`. |
-| `docker compose exec model-runner cat /runner/VERSION` | Verifica versión del Model Runner. | Nada. | `0.29.2`. |
+| `docker compose exec fastapi cat /app/VERSION` | Verifica versión del código dentro de FastAPI. | Nada. | `0.30.0`. |
+| `docker compose exec model-runner cat /runner/VERSION` | Verifica versión del Model Runner. | Nada. | `0.30.0`. |
 | `docker compose exec model-runner docker version` | Verifica cliente/daemon Docker desde el Runner. | Nada. | Client/Server accesibles. |
 | `docker compose exec model-runner docker info` | Diagnóstico detallado del daemon desde el Runner. | Nada. | Información del Engine sin error. |
 | `docker compose exec fastapi python -m model_tools.status` | Estado de imágenes, perfiles GPU y device por modelo. | Nada. | GMIC/NYU/GLAM `device=gpu` en workstation validada. |
@@ -1197,5 +1197,23 @@ Ejecutar sobre un run diagnóstico existente:
 
 El comando escribe `dicom_presentation_report.md`, `dicom_presentation_summary.json` y CSVs bajo `workspace/output/analyses/dicom-presentation-<timestamp>/`. Por defecto **no persiste copias transformadas de las imágenes**; `--write-images` es opcional para inspección visual. El resultado no puede usarse para elegir una rama por AUC ni para congelar pesos/thresholds.
 
-Este release también alinea la metadata de versión (`VERSION`, `pyproject.toml`, `mammography_agent.__version__` y Model Runner API) en `0.29.2`.
+Este release también alinea la metadata de versión (`VERSION`, `pyproject.toml`, `mammography_agent.__version__` y Model Runner API) en `0.30.0`.
 
+## v0.30.0 — RSNA adapter, required-four-view policy and compressed DICOM support
+
+`rsna` is now a native dataset key. The adapter discovers the manually acquired `train.csv` + `train_images/` layout under `/workspace/datasets/raw/rsna/` (including the observed nested `/workspace/datasets/raw/rsna/rsna/` layout), never downloads data, and keeps raw files immutable.
+
+The primary ensemble contract is `RSNA_REQUIRED_FOUR_VIEWS_V1`: at least one L_CC, R_CC, L_MLO and R_MLO is required. When a canonical view has multiple images, one is selected reproducibly by `DETERMINISTIC_LABEL_BLIND_SHA256_V1`; discarded repeats and non-standard views remain in audit manifests. Ground truth comes only from `train.csv:cancer`, with study malignancy defined as either breast malignant.
+
+Inspect before any pixel conversion:
+
+```bash
+docker compose exec fastapi \
+  python -m dataset_pipeline.inspect \
+  --datasets rsna \
+  --force-dicom-index
+```
+
+Expected artifacts include `rsna_dicom_index.csv`, `rsna_selected_views.csv`, `rsna_all_required_four_view.csv`, `rsna_unselected_duplicate_views.csv`, `rsna_nonstandard_views.csv`, `rsna_incomplete_studies.csv`, `rsna_label_conflicts.csv` and the generated `source_manifest.csv`.
+
+The application image now installs the pydicom plugins required for the two transfer syntaxes observed during RSNA preflight: JPEG Lossless SV1 and JPEG 2000 Lossless.
