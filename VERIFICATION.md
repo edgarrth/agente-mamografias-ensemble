@@ -1,4 +1,4 @@
-# Verification — through v0.30.0
+# Verification — through v0.30.2
 
 ## Scope
 
@@ -100,3 +100,154 @@
 - Updated version metadata to `0.30.0`.
 - Repository test suite executed against the packaged source: `118 passed`.
 - This packaged source intentionally contains no current RSNA/CMMD/CBIS dataset payloads; research workspace data remains external on the host bind mount.
+
+## v0.30.1 formal RSNA split and metrics evidence
+
+- Full pytest suite: 123 passed.
+- Added deterministic RSNA synthetic-contract test reproducing the expected post-diagnostic pool: 11,903 studies (11,422 benign / 481 malignant).
+- Verified 30/70 seed-42 split: Configuration 3,570 (3,426 / 144), Final 8,333 (7,996 / 337), zero study/patient overlap and 100% formal-pool coverage.
+- Verified missing required RSNA diagnostic-exclusion manifest fails closed.
+- Verified F1 and Average Precision/AUPRC are emitted by the shared evaluator.
+- Verified Final Test comparison artifact and final-manifest/exclusion guards are present.
+
+
+## v0.30.2 resumable formal execution evidence
+
+- Full source-tree pytest suite: **127 passed**.
+- Added tests for deterministic formal chunking, interruption/restart, successful-chunk hash refusal, orientation chunk reuse, and default chunk size.
+- Configuration and Final population/split semantics remain covered by the v0.30.1 tests.
+- Python compilation of the updated pipeline and CLIs passes.
+- FastAPI Dockerfile installs the `[test]` extra and copies repository static-contract inputs so pytest can be run inside the rebuilt application container.
+
+## Web unit-inference + MinIO extension verification (2026-08-18)
+
+- Full source-tree pytest suite in the packaging environment after the UI/metadata revision: **136 passed**.
+- Web-specific coverage includes four-view inspection, manual projection recovery, conservative metadata fallbacks, cached presentation previews, preview PNG rendering, label-free inference, non-blocking MinIO persistence failure, MinIO object layout, and API request contract without ground-truth/training fields.
+- `docker-compose.yml` parses successfully as YAML and FastAPI retains the MinIO Web environment variables.
+- FastAPI Web routes import successfully: `/single-cases/inspect`, `/single-cases/previews`, `/single-cases/run`, `/single-cases/storage-status`.
+- Critical validated batch files were SHA-256 compared against the original uploaded v0.30.2 resumable batch package and remain byte-identical: `mammography_agent/pipeline.py`, `mammography_agent/datasets/adapters.py`, `mammography_agent/datasets/rsna.py`, `mammography_agent/orientation_policy.py`, `mammography_agent/ensemble/soft_voting.py`, `experiments/run.py`, `experiments/final_evaluation.py`, `tests_flow/normal.py`, `config/experiments.yaml`, `config/ensemble.yaml`, and `config/models.yaml`.
+- The packaging sandbox does not expose Docker Engine/GPU and does not contain every declared runtime package. Repository tests were therefore executed with the same minimal external LangGraph test stub used for prior package verification. A live GMIC+NYU+GLAM + MinIO GPU/container end-to-end run remains environment-dependent and was not available in this sandbox.
+
+## v0.31.0 Web ensemble configuration and runtime preflight
+
+Validation date: 2026-08-18.
+
+Scope of this revision:
+
+- Add per-case Web ensemble weights for GMIC, NYU/DMV-CNN and GLAM.
+- Keep `config/ensemble.yaml` and `config/experiments.yaml` read-only from the Web route.
+- Keep the Web threshold sourced from `config/ensemble.yaml -> baseline.threshold`.
+- Record effective Web weights, source and elapsed time with the inference result.
+- Present model-level execution times when Model Runner returns resource metrics.
+- Report elapsed time when a Web evaluation terminates with an error.
+- Treat a configured GPU model as unavailable until its GPU image exists and `gpu_probe` has passed.
+- Add explicit CC/MLO descriptions to the visual projection-resolution control.
+- Align release metadata to `0.31.0` while retaining the validated v0.30.2 formal batch protocol implementation unchanged.
+
+Automated validation executed from the project root with the local LangGraph test stub used because LangGraph is not installed in this sandbox runtime:
+
+```bash
+PYTHONPATH=/mnt/data/test_stubs:. pytest -q
+```
+
+Result:
+
+```text
+145 passed in 30.83s
+```
+
+Focused Web/GPU/soft-voting validation:
+
+```text
+25 passed in 0.87s
+```
+
+The following batch-critical files were compared byte-for-byte with the original v0.30.2 source used for this Web work and remain identical:
+
+- `mammography_agent/pipeline.py`
+- `mammography_agent/datasets/rsna.py`
+- `mammography_agent/datasets/adapters.py`
+- `mammography_agent/orientation_policy.py`
+- `mammography_agent/ensemble/soft_voting.py`
+- `experiments/run.py`
+- `experiments/final_evaluation.py`
+- `tests_flow/normal.py`
+- `config/experiments.yaml`
+- `config/ensemble.yaml`
+- `config/models.yaml`
+
+The screenshot-reported `GPU_PROBE_REQUIRED` condition is an infrastructure precondition, not a DICOM or soft-voting error. The prescribed workstation validation remains:
+
+```bash
+docker compose exec fastapi python -m model_tools.validate_gpu --models all
+```
+
+A real Docker + NVIDIA GPU end-to-end inference was not executed in this sandbox because Docker Engine/GPU devices are not exposed here. The project retains its fail-safe behavior: GPU inference is refused until the configured runtime has passed its probe.
+
+
+## v0.32.0 Web device isolation and configuration tab
+
+Validation date: 2026-08-18.
+
+Scope:
+
+- Move Web ensemble weights out of the operational evaluation tab into **Configuración y estado**.
+- Add per-request `inference_device=cpu|gpu`, defaulting to CPU from `WEB_INFERENCE_DEVICE`.
+- Do not require GPU probe for Web CPU evaluations.
+- Preserve GPU preflight only when Web GPU is selected.
+- Record the effective Web device in result JSON and `web_inference_runs`.
+- Keep batch device configuration independent.
+
+Full source-tree validation with the local LangGraph stub:
+
+```bash
+PYTHONPATH=/mnt/data/test_stubs:. pytest -q
+```
+
+Result before packaging:
+
+```text
+153 passed in 29.43s
+```
+
+Batch-isolation verification:
+
+- `experiments/run.py`, `experiments/final_evaluation.py`, `tests_flow/normal.py`, RSNA adapters, orientation policy, soft voting and all batch YAML files remain byte-identical to the v0.31.0 input package.
+- `mammography_agent/pipeline.py` has one backward-compatible shared change: `_infer_three(..., device=None)`. If `device is None`, it invokes `run_model()` with the exact historical argument list. Existing batch call sites do not pass a device override.
+- A dedicated test asserts that `model_client.run_model(..., device=None)` does not serialize a `device` field, while explicit Web CPU/GPU selection does.
+
+The sandbox still does not expose Docker Engine/NVIDIA GPU, therefore a live model inference cannot be executed here. CPU/GPU routing, API contracts, persistence contracts and the full repository regression suite are covered by automated tests.
+
+## v0.32.1 Web live progress, evidence presentation and CPU label-contract compatibility
+
+Validation date: 2026-08-18.
+
+Scope:
+
+- Hide the Streamlit deployment toolbar from the research application UI.
+- Replace the raw MinIO sidebar status with a value-oriented evidence-traceability status and explain PostgreSQL/MinIO roles under **Configuración y estado**.
+- Generate a client-visible `run_id`, scroll to the progress region when evaluation starts, and poll `/single-cases/progress/{run_id}` while inference runs.
+- Report preparation, orientation, GMIC, NYU/DMV-CNN, GLAM, ensemble integration and evidence persistence as live states, including model elapsed time when the Model Runner returns it.
+- Fix Web CPU execution against historical GMIC/GLAM runners that require optional benign-label keys only while writing their output CSV. The Web-only compatibility layer adds `left_benign/right_benign = NaN`; it does not add diagnostic ground truth and does not change the canonical batch pickle contract.
+- Keep MinIO non-blocking with respect to the mathematical inference result.
+
+Full source-tree validation with the local LangGraph stub:
+
+```bash
+PYTHONPATH=/tmp/langgraph_stub:. pytest -q
+```
+
+Result:
+
+```text
+158 passed in 29.28s
+```
+
+Batch-isolation checks:
+
+- `mammography_agent/metarepo_format.py`, `experiments/run.py`, `experiments/final_evaluation.py`, `tests_flow/normal.py`, `config/experiments.yaml`, `config/ensemble.yaml` and `config/models.yaml` remain byte-identical to the v0.32.0 input package.
+- `mammography_agent/pipeline.py` changes only through optional Web parameters/helpers. Formal/batch call sites still invoke `_infer_three(...)` with the historical defaults.
+- Dedicated tests confirm that the canonical batch `data.pkl` does not contain `left_benign/right_benign`, while the opt-in Web compatibility transform adds only NaN values for those optional metadata keys.
+
+Docker Engine and an NVIDIA device are not exposed in this packaging sandbox, therefore the exact real GMIC CPU run that produced the reported workstation traceback cannot be re-executed here. The failing contract is reproduced and guarded by structural/unit tests, while the complete repository regression suite passes.
+

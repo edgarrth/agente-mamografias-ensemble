@@ -12,4 +12,4 @@ def test_runner_image_copies_version_file():
 def test_no_stale_runner_010_health_version():
     text=Path("model_runner/api.py").read_text(encoding="utf-8")
     assert '"version": "0.10.0"' not in text
-    assert 'APP_VERSION = "0.30.0"' in text
+    assert 'APP_VERSION = "0.32.1"' in text

@@ -5,7 +5,7 @@ import json
 import math
 import numpy as np
 import pandas as pd
-from sklearn.metrics import roc_auc_score, roc_curve
+from sklearn.metrics import roc_auc_score, roc_curve, average_precision_score, precision_recall_curve
 
 from .ensemble.metrics import evaluate
 
@@ -49,6 +49,12 @@ def _safe_auc(y: pd.Series, score: pd.Series) -> float | None:
     if y.nunique() < 2:
         return None
     return float(roc_auc_score(y.astype(int), score.astype(float)))
+
+
+def _safe_average_precision(y: pd.Series, score: pd.Series) -> float | None:
+    if y.nunique() < 2:
+        return None
+    return float(average_precision_score(y.astype(int), score.astype(float)))
 
 
 def stratified_bootstrap_auc(
@@ -184,6 +190,9 @@ def analyze_score_frame(df: pd.DataFrame, output_dir: Path, source: str | None =
         metric_rows.append({
             "model": model,
             "roc_auc": auc,
+            "average_precision": _safe_average_precision(y, values),
+            "auprc": _safe_average_precision(y, values),
+            "auprc_method": "average_precision_score",
             **ci,
             "mean_benign": float(benign.mean()) if len(benign) else None,
             "mean_malignant": float(malignant.mean()) if len(malignant) else None,
@@ -230,6 +239,21 @@ def analyze_score_frame(df: pd.DataFrame, output_dir: Path, source: str | None =
                     "threshold": float(threshold) if math.isfinite(float(threshold)) else None,
                 })
     pd.DataFrame(roc_rows, columns=["model", "point", "fpr", "tpr", "threshold"]).to_csv(output_dir / "roc_points.csv", index=False)
+
+    pr_rows = []
+    if y.nunique() >= 2:
+        for model, values in score_series.items():
+            precision, recall, thresholds = precision_recall_curve(y, values)
+            for idx, (pr, rc) in enumerate(zip(precision, recall)):
+                threshold = float(thresholds[idx]) if idx < len(thresholds) else None
+                pr_rows.append({
+                    "model": model,
+                    "point": idx,
+                    "precision": float(pr),
+                    "recall": float(rc),
+                    "threshold": threshold,
+                })
+    pd.DataFrame(pr_rows, columns=["model", "point", "precision", "recall", "threshold"]).to_csv(output_dir / "pr_points.csv", index=False)
 
     # Preview the adaptive threshold grid only when this is a configuration/diagnostic analysis.
     # Final Test Set analysis must never suggest a post-hoc re-optimization grid.
@@ -284,6 +308,9 @@ def analyze_score_frame(df: pd.DataFrame, output_dir: Path, source: str | None =
             "ensemble_score_max": observed_max,
             "ensemble_score_mean": float(df["baseline_ensemble_score"].mean()),
             "roc_auc": _safe_auc(y, df["baseline_ensemble_score"]),
+            "average_precision": _safe_average_precision(y, df["baseline_ensemble_score"]),
+            "auprc": _safe_average_precision(y, df["baseline_ensemble_score"]),
+            "auprc_method": "average_precision_score",
             "roc_auc_uncertainty": stratified_bootstrap_auc(y, df["baseline_ensemble_score"]),
             "classification_metrics": baseline_classification_metrics,
         },
@@ -338,6 +365,8 @@ def analyze_score_frame(df: pd.DataFrame, output_dir: Path, source: str | None =
         f"- **NPV**: {baseline_classification_metrics['npv']}",
         f"- **FPR**: {baseline_classification_metrics['fpr']}",
         f"- **Balanced Accuracy**: {baseline_classification_metrics['balanced_accuracy']}",
+        f"- **F1**: {baseline_classification_metrics['f1']}",
+        f"- **AUPRC / Average Precision**: {baseline_classification_metrics['auprc']}",
         "",
         "## Diagnostic candidate evaluation",
         "",
@@ -345,13 +374,14 @@ def analyze_score_frame(df: pd.DataFrame, output_dir: Path, source: str | None =
         "- **eligible_for_freeze**: False",
         "- When candidate thresholds are enabled, see `diagnostic_configurations.csv` and `diagnostic_ranking.csv` for the 16×5 CPU-only preview on this analysis set.",
         "",
-        "## Per-model ROC-AUC",
+        "## Per-model discrimination",
         "",
     ]
     for row in metric_rows:
         report_lines.append(
-            f"- **{row['model']}**: {row['roc_auc']} "
-            f"(stratified-bootstrap 95% CI {row['roc_auc_ci95_low']}–{row['roc_auc_ci95_high']}, n=2000)"
+            f"- **{row['model']}**: ROC-AUC={row['roc_auc']}; "
+            f"AUPRC/AP={row['auprc']} "
+            f"(ROC-AUC stratified-bootstrap 95% CI {row['roc_auc_ci95_low']}–{row['roc_auc_ci95_high']}, n=2000)"
         )
     n_neg = int((y == 0).sum()); n_pos = int((y == 1).sum())
     pair_step = (1.0 / (n_neg * n_pos)) if n_neg and n_pos else None

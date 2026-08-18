@@ -131,6 +131,12 @@ services:
       DEFAULT_MAX_RUNTIME_MINUTES: ${DEFAULT_MAX_RUNTIME_MINUTES:-120}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       MODEL_RUNNER_URL: ${MODEL_RUNNER_URL:-http://model-runner:8010}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-mammography}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-mammography_research}
+      MINIO_WEB_BUCKET: ${MINIO_WEB_BUCKET:-mammography-web}
+      MINIO_WEB_ENABLED: ${MINIO_WEB_ENABLED:-true}
+      MINIO_SECURE: ${MINIO_SECURE:-false}
     volumes:
     - ${HOST_WORKSPACE:-./workspace}:/workspace
     - ./config:/app/config:ro
@@ -164,6 +170,7 @@ services:
       WORKSPACE_ROOT: /workspace
       CONFIG_ROOT: /app/config
       API_URL: http://fastapi:8000
+      WEB_INFERENCE_DEVICE: ${WEB_INFERENCE_DEVICE:-cpu}
     volumes:
     - ${HOST_WORKSPACE:-./workspace}:/workspace
     - ./config:/app/config:ro
