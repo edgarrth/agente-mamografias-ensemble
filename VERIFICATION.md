@@ -1,4 +1,4 @@
-# Verification — through v0.30.0
+# Verification — through v0.30.2
 
 ## Scope
 
@@ -100,3 +100,21 @@
 - Updated version metadata to `0.30.0`.
 - Repository test suite executed against the packaged source: `118 passed`.
 - This packaged source intentionally contains no current RSNA/CMMD/CBIS dataset payloads; research workspace data remains external on the host bind mount.
+
+## v0.30.1 formal RSNA split and metrics evidence
+
+- Full pytest suite: 123 passed.
+- Added deterministic RSNA synthetic-contract test reproducing the expected post-diagnostic pool: 11,903 studies (11,422 benign / 481 malignant).
+- Verified 30/70 seed-42 split: Configuration 3,570 (3,426 / 144), Final 8,333 (7,996 / 337), zero study/patient overlap and 100% formal-pool coverage.
+- Verified missing required RSNA diagnostic-exclusion manifest fails closed.
+- Verified F1 and Average Precision/AUPRC are emitted by the shared evaluator.
+- Verified Final Test comparison artifact and final-manifest/exclusion guards are present.
+
+
+## v0.30.2 resumable formal execution evidence
+
+- Full source-tree pytest suite: **127 passed**.
+- Added tests for deterministic formal chunking, interruption/restart, successful-chunk hash refusal, orientation chunk reuse, and default chunk size.
+- Configuration and Final population/split semantics remain covered by the v0.30.1 tests.
+- Python compilation of the updated pipeline and CLIs passes.
+- FastAPI Dockerfile installs the `[test]` extra and copies repository static-contract inputs so pytest can be run inside the rebuilt application container.

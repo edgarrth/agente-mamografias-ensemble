@@ -295,3 +295,26 @@ Corrige la entrada de `orientation_counterfactual_diagnostic` para registrar `id
 - Uses only `train.csv:cancer` for breast/study ground truth and rejects within-breast label conflicts.
 - Adds reproducible JPEG Lossless/JPEG 2000 pydicom plugins validated against the audited RSNA runtime sample.
 - Does not download RSNA automatically and never modifies raw DICOM/CSV inputs.
+
+## 2026-08-17 — v0.30.1: RSNA formal split, leakage guards and AUPRC/F1
+
+- Preserves the prepared RSNA cohort from v0.30.0; no dataset reconversion is required.
+- Requires the frozen `datasets/manifests/rsna_diagnostic_exclusion_v1.csv` for formal RSNA experiments and removes those 10 previously observed patients before splitting.
+- Splits 100% of the remaining formal pool by `dataset_source + patient_id`, stratified by patient ground truth, into Configuration Set and Final Test. Defaults remain 30%/70% with seed 42.
+- Persists `formal_pool_manifest.csv`, `formal_exclusions_applied.csv`, `split_summary.json`, Configuration and Final manifests, class distributions, overlap guards and manifest hashes.
+- Final Test inference remains forbidden before `freeze`; `final_evaluation` rejects a modified final manifest or any formally excluded diagnostic patient.
+- Adds F1 and Average Precision/AUPRC to research metrics and persists `pr_points.csv`.
+- Adds `final_model_comparison.csv` so individual GMIC/NYU/GLAM discrimination, the uniform baseline and the frozen selected ensemble can be inspected in one artifact.
+- The configuration selector itself is intentionally unchanged: ROC-AUC selects weights, then Balanced Accuracy selects threshold, followed by Sensitivity, Specificity/FP and baseline-distance tie breaks. AUPRC/F1 are reported in v0.30.1 but do not silently redefine the predeclared selection policy.
+
+
+## 2026-08-18 — v0.30.2: resumable formal RSNA execution
+
+- Keeps the v0.30.1 RSNA formal population, 10-study diagnostic exclusion, deterministic patient-level 30/70 split, 16 weight candidates, adaptive thresholds, selection order and freeze/Final-Test boundary unchanged.
+- Adds deterministic chunking (default 25 studies) to Configuration orientation preflight and GMIC → NYU → GLAM inference.
+- Adds per-chunk SUCCESS/FAILED markers and SHA-256 validation of ordered input manifests and prediction outputs.
+- Adds `chunk_progress.json` and `orientation_chunk_progress.json` for auditable progress.
+- Adds `--resume-experiment <id>` to continue an interrupted Configuration run without regenerating the split or touching Final Test.
+- Final evaluation uses the same resumable orientation/inference mechanism, but remains blocked until `frozen_configuration.yaml` exists.
+- Successful cache/hash mismatches fail closed; incomplete chunks are restarted from the beginning while earlier successful chunks are reused.
+- FastAPI research image now includes pytest and the release test/static-contract files so `docker compose exec fastapi python -m pytest -q` is a supported validation command.

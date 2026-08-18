@@ -22,3 +22,16 @@ def test_metrics_explain_undefined_ppv_and_npv():
     all_positive=evaluate([0,1],[.8,.9],.1)
     assert all_positive["npv"] is None
     assert all_positive["npv_unavailable_reason"]
+
+
+def test_metrics_v0301_include_f1_and_average_precision_auprc():
+    from sklearn.metrics import average_precision_score
+    y=[0,0,0,1,1,1]
+    scores=[.1,.2,.8,.3,.7,.9]
+    m=evaluate(y,scores,.5)
+    # tp=2, fp=1, fn=1 -> F1 = 2*2/(4+1+1)=2/3
+    assert m["f1"]==pytest.approx(2/3)
+    expected=average_precision_score(y,scores)
+    assert m["average_precision"]==pytest.approx(expected)
+    assert m["auprc"]==pytest.approx(expected)
+    assert m["auprc_method"]=="average_precision_score"

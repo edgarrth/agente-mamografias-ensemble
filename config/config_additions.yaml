@@ -527,3 +527,38 @@ additions:
   name: rsna_study_ground_truth_v1
   value: cancer is read only from train.csv; breast labels must be internally consistent; study is malignant if either breast is malignant, otherwise benign when both breasts are benign
   reason: Preserve the official cancer label as the only binary ground-truth source and reject contradictory breast labels rather than inventing a resolution.
+- id: ADD-095
+  name: rsna_formal_diagnostic_exclusion_v0301
+  value: the frozen 10-study RSNA diagnostic set in rsna_diagnostic_exclusion_v1.csv is removed before formal splitting and cannot enter Configuration Set or Final Test
+  reason: Those patients were observed during end-to-end diagnostic validation; excluding them from the formal pool preserves independence and prevents development leakage into Final Test.
+  version: 0.30.1
+
+- id: ADD-096
+  name: exhaustive_patient_stratified_formal_split_v0301
+  value: after formal exclusions, 100% of the remaining pool is assigned exactly once to Configuration Set or Final Test using a deterministic stratified split by dataset_source+patient_id; default ratio is 30/70 with seed 42
+  reason: Weight/threshold selection and final generalization evidence require mutually exclusive patient-level subsets with auditable complete coverage.
+  version: 0.30.1
+
+- id: ADD-097
+  name: final_manifest_integrity_guard_v0301
+  value: experiment_plan.json stores SHA-256 of the reserved Final Test manifest and final_evaluation refuses inference if that manifest changes after planning; excluded diagnostic patients are checked again before final inference
+  reason: The Final Test must remain immutable and independent after the formal split and before/after configuration freeze.
+  version: 0.30.1
+
+- id: ADD-098
+  name: auprc_f1_formal_metrics_v0301
+  value: evaluation now reports Average Precision as AUPRC plus F1 in configuration/final metrics, persists precision-recall points, and includes per-model versus baseline/selected ensemble comparison artifacts in Final Test
+  reason: RSNA has low malignant prevalence, so ROC-AUC and accuracy alone are insufficient to characterize positive-class retrieval and the selected ensemble must be compared transparently with individual models.
+  version: 0.30.1
+
+- id: ADD-099
+  name: formal_chunked_resumable_execution_v0302
+  value: Configuration orientation and GMIC->NYU->GLAM inference execute in deterministic 25-study chunks with SUCCESS markers, input/prediction SHA-256 validation and resumable checkpoints; Final Test uses the same mechanism only after freeze
+  reason: The RSNA Configuration and Final subsets are large enough that an interruption during monolithic preprocessing/inference could lose many hours; chunking improves operational resilience without changing the experimental population, model semantics or selection methodology.
+  version: 0.30.2
+
+- id: ADD-100
+  name: fastapi_embedded_release_test_suite_v0302
+  value: the FastAPI research image installs the project test extra and includes repository test/static-contract files so python -m pytest -q can be executed directly inside the rebuilt container
+  reason: Release validation should be reproducible in the same Python runtime used by the application rather than depending on a host Python environment.
+  version: 0.30.2

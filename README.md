@@ -136,8 +136,8 @@ Esta sección centraliza los comandos usados durante la validación del prototip
 | `docker compose logs -f model-runner` | Sigue el ciclo de inferencia del Model Runner: espera/adquisición GPU, inicio de contenedor temporal, inicio/fin de comando, éxito/fallo y métricas resumidas. | Nada. | Eventos de inferencia visibles sin spam de healthchecks. |
 | `./scripts/logs.sh` | Wrapper para seguir en vivo los logs de `fastapi` y `model-runner` con un tail inicial configurable (`TAIL_LINES=200 ./scripts/logs.sh`). | Nada. | Logs operativos de servicios; eventos CLI persisten además en `workspace/logs/*.jsonl`. |
 | `tail -f workspace/logs/audit.jsonl workspace/logs/model_runner.jsonl` | Sigue la auditoría persistente de CLI/pipeline y Runner desde el host. | Nada. | Eventos JSONL incluso cuando el comando se ejecutó mediante `docker compose exec`. |
-| `docker compose exec fastapi cat /app/VERSION` | Verifica versión del código dentro de FastAPI. | Nada. | `0.30.0`. |
-| `docker compose exec model-runner cat /runner/VERSION` | Verifica versión del Model Runner. | Nada. | `0.30.0`. |
+| `docker compose exec fastapi cat /app/VERSION` | Verifica versión del código dentro de FastAPI. | Nada. | `0.30.2`. |
+| `docker compose exec model-runner cat /runner/VERSION` | Verifica versión del Model Runner. | Nada. | `0.30.2`. |
 | `docker compose exec model-runner docker version` | Verifica cliente/daemon Docker desde el Runner. | Nada. | Client/Server accesibles. |
 | `docker compose exec model-runner docker info` | Diagnóstico detallado del daemon desde el Runner. | Nada. | Información del Engine sin error. |
 | `docker compose exec fastapi python -m model_tools.status` | Estado de imágenes, perfiles GPU y device por modelo. | Nada. | GMIC/NYU/GLAM `device=gpu` en workstation validada. |
@@ -161,9 +161,9 @@ Esta sección centraliza los comandos usados durante la validación del prototip
 | `docker compose exec fastapi python -m tests_flow.normal --datasets cbis_ddsm --samples 10 --sampling balanced --seed 42 --max-runtime-minutes 30` | Prueba de integración balanceada que fuerza cuotas iguales por clase cuando hay disponibilidad; útil para ejercitar TN/FP/FN/TP. | Solo outputs/logs de la nueva corrida; no limpia ni reconvierte datasets. | Para 10 estudios, objetivo 5 benignos/5 malignos y métricas calculables si todos completan. |
 | `docker compose exec fastapi python -m experiments.score_analysis --input /workspace/output/normal_tests/<RUN>/raw_model_predictions.csv` | Analiza scores ya calculados sin ejecutar GMIC/NYU/GLAM otra vez: ROC-AUC por modelo, distribuciones, correlaciones, puntos ROC, métricas baseline (Sensitivity/Specificity/PPV/NPV/FPR/Balanced Accuracy) y preview de thresholds adaptativos. | Solo crea `workspace/output/analyses/score-analysis-.../`; no modifica datasets, modelos ni el run de origen. | `score_summary.json`, `model_metrics.csv`, `candidate_thresholds.csv`, `diagnostic_configurations.csv`, `diagnostic_ranking.csv`, `score_analysis_report.md`. |
 | `./scripts/analyze-scores.sh /workspace/output/normal_tests/<RUN>/raw_model_predictions.csv` | Wrapper host del análisis anterior. | Mismos outputs CPU-only; no usa GPU. | Ruta del directorio de análisis. |
-| `docker compose exec fastapi python -m experiments.run --datasets cbis_ddsm --configuration-ratio 0.30 --seed 42` | Fase de configuración experimental. Divide por paciente antes de inferir, ejecuta modelos solo sobre Configuration Set y evalúa 16 pesos × 5 thresholds adaptativos (=80) en CPU. v0.23 selecciona pesos por ROC-AUC y threshold por Balanced Accuracy, con Sensitivity/Specificity como desempate. El Final Test Set queda reservado sin scores. | `workspace/output/experiments/`; no modifica dataset. | `experiment_plan.json`, manifests config/final, score analysis, 80 configuraciones, ranking y best configuration. |
+| `docker compose exec fastapi python -m experiments.run --datasets rsna --configuration-ratio 0.30 --seed 42` | Fase formal de configuración. v0.30.2 conserva la exclusión/split de v0.30.1 y ejecuta orientación e inferencia por chunks reanudables; excluye primero el Diagnostic Set RSNA ya observado, divide por paciente y de forma estratificada el 100% del pool formal restante, ejecuta modelos solo sobre Configuration Set y evalúa 16 pesos × 5 thresholds (=80). AUPRC/F1 se reportan sin cambiar post hoc la política de selección. El Final Test queda reservado sin scores. | `workspace/output/experiments/`; no modifica datasets. | `formal_pool_manifest.csv`, exclusiones, `split_summary.json`, manifests config/final, score analysis, 80 configuraciones, ranking y best configuration. |
 | `docker compose exec fastapi python -m experiments.freeze --experiment <ID>` | Congela pesos/threshold seleccionados. | Crea `frozen_configuration.yaml`; no se sobreescribe con contenido distinto. | Configuración frozen. |
-| `docker compose exec fastapi python -m experiments.final_evaluation --experiment <ID>` | Evalúa el Final Test Set reservado. | Resultados finales en el experimento; no reoptimiza. | Métricas selected vs baseline. |
+| `docker compose exec fastapi python -m experiments.final_evaluation --experiment <ID>` | Evalúa el Final Test reservado después del freeze. Verifica hash del manifest y ausencia de pacientes diagnósticos excluidos. | Resultados finales; no reoptimiza. | Métricas selected vs baseline, AUPRC/F1 y `final_model_comparison.csv` con modelos individuales. |
 | `docker run --rm --gpus all nvidia/cudagl:10.1-devel-ubuntu18.04 nvidia-smi` | Diagnóstico de exposición GPU a Docker/WSL. | Nada persistente. | RTX visible dentro del contenedor. |
 
 ### Semántica exacta de `dataset_pipeline.prepare`
@@ -1217,3 +1217,94 @@ docker compose exec fastapi \
 Expected artifacts include `rsna_dicom_index.csv`, `rsna_selected_views.csv`, `rsna_all_required_four_view.csv`, `rsna_unselected_duplicate_views.csv`, `rsna_nonstandard_views.csv`, `rsna_incomplete_studies.csv`, `rsna_label_conflicts.csv` and the generated `source_manifest.csv`.
 
 The application image now installs the pydicom plugins required for the two transfer syntaxes observed during RSNA preflight: JPEG Lossless SV1 and JPEG 2000 Lossless.
+
+## v0.30.1 — formal RSNA population split and imbalanced-dataset metrics
+
+v0.30.1 reuses the RSNA preparation from v0.30.0. It does not rerun `dataset_pipeline.prepare` and does not change any model checkpoint or preprocessing contract.
+
+The formal RSNA experiment is now explicit about population accounting. The prepared dataset has 11,913 studies, but 10 were already observed in the diagnostic run and are frozen in `datasets/manifests/rsna_diagnostic_exclusion_v1.csv`. Those 10 are removed before the formal split. Therefore, **100% of the formal experimental pool** is 11,903 still-unobserved studies, not the original 11,913.
+
+The default formal split is deterministic, patient-level and stratified:
+
+```text
+11,913 prepared RSNA
+    - 10 diagnostic / already observed
+    = 11,903 formal pool
+        ├── 30% Configuration Set: 3,570
+        │      ├── 3,426 BENIGN
+        │      └──   144 MALIGNANT
+        └── 70% Final Test:       8,333
+               ├── 7,996 BENIGN
+               └──   337 MALIGNANT
+```
+
+The exact default command is:
+
+```bash
+docker compose exec fastapi \
+  python -m experiments.run \
+  --datasets rsna \
+  --configuration-ratio 0.30 \
+  --seed 42
+```
+
+This command infers **only the Configuration Set**. It writes the complete split evidence before GPU inference, including `formal_pool_manifest.csv`, `formal_exclusions_applied.csv`, `split_summary.json`, `configuration_set_manifest.csv` and the reserved `final_test_manifest.csv`. After configuration selection:
+
+```bash
+docker compose exec fastapi \
+  python -m experiments.freeze \
+  --experiment <ID>
+```
+
+Only after freeze:
+
+```bash
+docker compose exec fastapi \
+  python -m experiments.final_evaluation \
+  --experiment <ID>
+```
+
+v0.30.1 also adds `average_precision`/`auprc`, F1 and precision-recall points. `final_model_comparison.csv` compares GMIC, NYU, GLAM, the uniform baseline and the frozen selected ensemble. ROC-AUC and AUPRC are the threshold-independent comparisons; threshold-dependent metrics for individual models at 0.50 are explicitly labeled as reference values, not calibrated clinical operating points.
+
+The weight/threshold selection policy remains unchanged in this patch. AUPRC and F1 are reported, but they are not introduced post hoc as new optimization objectives. Any future change to the selection objective must be versioned before opening the Final Test.
+
+
+## v0.30.2 — chunking/checkpoint/resume para el experimento formal RSNA
+
+v0.30.2 no modifica ninguna decisión metodológica del experimento. El pool formal sigue siendo el conjunto RSNA no observado después de excluir el Diagnostic Set de 10 estudios; la partición sigue siendo 30% Configuration y 70% Final por paciente, estratificada y reproducible con seed 42.
+
+La diferencia es operacional. La orientación formal y la inferencia se procesan por defecto en chunks de 25 estudios. Dentro de cada chunk los modelos siguen siendo secuenciales: GMIC → NYU → GLAM. Cada chunk exitoso persiste `chunk_status.json` con hashes SHA-256 del input y de las predicciones. Los chunks incompletos se reinician desde el comienzo; los chunks exitosos anteriores se reutilizan después de validar identidad, orden, número de estudios y hashes.
+
+Inicio de Configuration:
+
+```bash
+docker compose exec fastapi python -m experiments.run \
+  --datasets rsna \
+  --configuration-ratio 0.30 \
+  --seed 42
+```
+
+Si la ejecución se interrumpe, no se debe iniciar un experimento nuevo. Se reanuda el mismo ID:
+
+```bash
+docker compose exec fastapi python -m experiments.run \
+  --datasets rsna \
+  --configuration-ratio 0.30 \
+  --seed 42 \
+  --resume-experiment experiment-YYYYMMDDTHHMMSSZ
+```
+
+Progreso:
+
+```bash
+cat workspace/output/experiments/<EXPERIMENT_ID>/configuration_orientation/orientation_chunk_progress.json
+cat workspace/output/experiments/<EXPERIMENT_ID>/configuration_inference/chunk_progress.json
+```
+
+El Final Test usa el mismo mecanismo de checkpoint únicamente después de `experiments.freeze`; no se crea ningún chunk de Final antes del freeze.
+
+Validación de release dentro del runtime de FastAPI:
+
+```bash
+docker compose exec fastapi python -m pytest -q
+```
