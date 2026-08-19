@@ -133,18 +133,45 @@ def _infer_three(
     *,
     web_label_blind_compat: bool = False,
     progress_callback=None,
+    stage_progress_callback=None,
 ) -> pd.DataFrame:
     batch=run_dir/"model_batch"; batch.mkdir(parents=True,exist_ok=True); batch.chmod(0o777)
-    images,pkl=build_batch(df,batch)
-    if web_label_blind_compat:
-        # Historical CPU GMIC/GLAM runners read optional benign-label keys only
-        # when constructing their result CSV after inference.
-        _apply_web_label_blind_compat(pkl)
+    input_preparation_started = time.monotonic()
+    if stage_progress_callback is not None:
+        stage_progress_callback(stage="MODEL_INPUT_PREPARATION", state="RUNNING")
+    try:
+        if web_label_blind_compat:
+            runtime_root = run_dir.resolve()
+            def _web_source(value):
+                path = Path(value).resolve()
+                if path != runtime_root and runtime_root not in path.parents:
+                    raise ValueError(f"Web model input escaped the single-case runtime: {path}")
+                return path
+            images,pkl=build_batch(df,batch,source_path_resolver=_web_source)
+        else:
+            images,pkl=build_batch(df,batch)
+        if web_label_blind_compat:
+            # Historical CPU GMIC/GLAM runners read optional benign-label keys only
+            # when constructing their result CSV after inference.
+            _apply_web_label_blind_compat(pkl)
+    except Exception:
+        if stage_progress_callback is not None:
+            stage_progress_callback(
+                stage="MODEL_INPUT_PREPARATION", state="FAILED",
+                elapsed_seconds=time.monotonic() - input_preparation_started,
+            )
+        raise
+    if stage_progress_callback is not None:
+        stage_progress_callback(
+            stage="MODEL_INPUT_PREPARATION", state="SUCCESS",
+            elapsed_seconds=time.monotonic() - input_preparation_started,
+        )
     outputs={}; xai={}; resources=[]
     for model in MODELS:
         out=batch/f"{model}.csv"; out.touch(); out.chmod(0o666)
         pre=batch/"preprocessed"/model; pre.mkdir(parents=True,exist_ok=True); pre.chmod(0o777)
         audit("MODEL_INFERENCE_STARTED",run_id=run_id,model=model,studies=len(df),preprocessed_dir=str(pre))
+        model_started = time.monotonic()
         if progress_callback is not None:
             progress_callback(model=model, state="RUNNING")
         try:
@@ -156,8 +183,9 @@ def _infer_three(
                 raise RuntimeError(f"Real model {model} failed: {result}")
         except Exception:
             if progress_callback is not None:
-                progress_callback(model=model, state="FAILED")
+                progress_callback(model=model, state="FAILED", elapsed_seconds=time.monotonic() - model_started)
             raise
+        wall_elapsed = time.monotonic() - model_started
         metrics=result.get("resource_metrics") or {}
         audit(
             "MODEL_INFERENCE_COMPLETED",run_id=run_id,model=model,
@@ -169,11 +197,8 @@ def _infer_three(
         outputs[model]=out; xai[model]=result.get("xai_artifacts",[])
         resources.append({"model":model,**(result.get("resource_metrics") or {})})
         if progress_callback is not None:
-            progress_callback(
-                model=model,
-                state="SUCCESS",
-                elapsed_seconds=(result.get("resource_metrics") or {}).get("elapsed_seconds"),
-            )
+            audit("WEB_MODEL_WALL_TIME", run_id=run_id, model=model, elapsed_seconds=wall_elapsed)
+            progress_callback(model=model, state="SUCCESS", elapsed_seconds=wall_elapsed)
     g=parse_image_level(outputs["gmic"],"gmic")
     l=parse_image_level(outputs["glam"],"glam")
     n=parse_nyu(outputs["nyu"],batch/"study_order.csv")

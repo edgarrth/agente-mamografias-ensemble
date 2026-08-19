@@ -4,6 +4,7 @@ import os, yaml
 
 CONFIG_ROOT = Path(os.getenv("CONFIG_ROOT", "/app/config" if Path("/app/config").exists() else "config"))
 WORKSPACE_ROOT = Path(os.getenv("WORKSPACE_ROOT", "/workspace" if Path("/workspace").exists() else "workspace"))
+WEB_SCRATCH_ROOT = Path(os.getenv("WEB_SCRATCH_ROOT", "/web-scratch" if Path("/web-scratch").exists() else "web-scratch"))
 
 def load_yaml(name: str) -> dict:
     path = CONFIG_ROOT / name

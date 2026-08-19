@@ -251,3 +251,89 @@ Batch-isolation checks:
 
 Docker Engine and an NVIDIA device are not exposed in this packaging sandbox, therefore the exact real GMIC CPU run that produced the reported workstation traceback cannot be re-executed here. The failing contract is reproduced and guarded by structural/unit tests, while the complete repository regression suite passes.
 
+
+
+## v0.32.2 Web wall-clock timing, duplicate-run guard and MinIO navigation
+
+- Web-visible model duration is measured around the complete `run_model(...)` request with `time.monotonic()`; runtime resource metrics remain diagnostic-only.
+- Progress records independent durations for study preparation, orientation, model-input preparation, GMIC, NYU/DMV-CNN, GLAM, ensemble integration and result persistence.
+- Streamlit disables the evaluation action while `web_eval_running=true` and preserves a single client-visible run request.
+- `Resultados por modelo`, `Tiempos de ejecución`, `Preparación del estudio` and `Normalización de orientación` are collapsed by default.
+- The sidebar no longer presents a generic MinIO evidence banner. The final result exposes the MinIO bucket/prefix and an optional console link through `MINIO_CONSOLE_PUBLIC_URL`.
+- Batch entrypoints continue calling `_infer_three(...)` without Web callbacks; experiments, formal resume, normal test, voting and dataset configuration files remain unchanged.
+- Regression executed in the packaged source environment: `163 passed`.
+
+
+## v0.33.0 Web persistence isolation
+
+Validation date: 2026-08-18.
+
+Scope:
+
+- Move Web case staging/runtime from the project `workspace/` bind mount to the dedicated Docker volume `web_scratch:/web-scratch`.
+- Keep Web progress in bounded in-memory FastAPI state instead of `web_progress.json`.
+- Remove each Web run directory and staged DICOMs after the request finishes, on success or failure.
+- Persist durable Web results only to PostgreSQL and MinIO.
+- Preserve the batch workspace, resume paths, formal experiment entrypoints and configuration files.
+
+Regression with the local LangGraph test stub:
+
+```bash
+PYTHONPATH=/tmp/test_stubs:. pytest -q
+```
+
+Result:
+
+```text
+167 passed in 29.14s
+```
+
+Isolation evidence:
+
+- `experiments/run.py`, `experiments/final_evaluation.py`, `tests_flow/normal.py`, RSNA adapters, `ensemble/soft_voting.py`, `config/experiments.yaml`, `config/ensemble.yaml` and `config/models.yaml` are byte-identical to v0.32.2.
+- A dedicated Web-storage test places a sentinel under the batch experiment workspace, executes a Web single-case simulation, and verifies that the sentinel is unchanged, `workspace/output/single_cases` is not created, the Web scratch run is removed, staged uploads are removed, and the durable artifact reference is `minio://...`.
+- The default `build_batch(...)` output was compared between v0.32.2 and v0.33.0 using identical synthetic inputs: image SHA-256, `study_order.csv` SHA-256 and `data.pkl` SHA-256 are identical.
+- Shared helpers (`pipeline.py`, `orientation_policy.py`, `metarepo_format.py`) contain only opt-in Web resolver branches; batch/default calls retain their historical signatures.
+
+The packaging sandbox does not expose Docker Engine/NVIDIA hardware, so a live Docker model inference cannot be executed here.
+
+
+## v0.34.0 Web threshold override and Docker observability
+
+Validation date: 2026-08-18.
+
+- `decision_threshold` is optional and validated in `[0,1]` by the Web API.
+- The override is resolved only inside `single_case.run_single_case`; no YAML or batch environment variable is mutated.
+- `threshold_source` is persisted in the Web-only PostgreSQL table and result payload.
+- Web Docker stdout now includes run-correlated events for configuration, stage/model timing, scores, ensemble, persistence and scratch cleanup.
+- Model Runner emits Web-only runtime preparation and total runner wall-clock diagnostics; the historical batch success payload/log fields remain unchanged.
+- `scripts/web-debug-logs.sh <run_id>` extracts FastAPI + Model Runner events for one Web evaluation.
+
+Regression with the local LangGraph stub:
+
+```bash
+PYTHONPATH=/tmp/langgraph_stub:. pytest -q
+```
+
+Result:
+
+```text
+173 passed in 29.56s
+```
+
+Batch-isolation evidence:
+
+- `experiments/run.py`, `experiments/final_evaluation.py`, `tests_flow/normal.py`, `mammography_agent/pipeline.py`, RSNA adapters, orientation policy, soft voting, `metarepo_format.py`, `config/experiments.yaml`, `config/ensemble.yaml` and `config/models.yaml` are byte-identical to v0.33.0.
+- The threshold override exists only in `WebDicomCaseRequest` / `single_case.run_single_case` and is not serialized into any batch call.
+- Model Runner detailed timing is gated by `run_id.startswith("web-")`; non-Web runs retain the historical `MODEL_RUN_SUCCESS` fields and response contract.
+
+Docker Engine/NVIDIA hardware are not exposed in the packaging sandbox, therefore live GMIC/NYU/GLAM execution is not part of this package validation.
+
+
+## v0.35.0 Web settings persistence
+
+- Added PostgreSQL table `web_evaluation_settings` for the active Web-only configuration.
+- Added `GET /single-cases/web-settings` and `PUT /single-cases/web-settings`.
+- Streamlit restores the persisted device, weights and decision threshold after reruns/new browser sessions and automatically saves valid changes.
+- No batch YAML or batch entrypoint is mutated by this feature.
+- Added one-time fallback migration from the latest successful `web_inference_runs` configuration when `web_evaluation_settings` is initially empty.

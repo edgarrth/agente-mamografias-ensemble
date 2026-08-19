@@ -28,6 +28,7 @@ def settings() -> dict[str, Any]:
         ).strip(),
         "secure": _env_bool("MINIO_SECURE", False),
         "bucket": os.getenv("MINIO_WEB_BUCKET", DEFAULT_BUCKET).strip() or DEFAULT_BUCKET,
+        "console_public_url": os.getenv("MINIO_CONSOLE_PUBLIC_URL", "http://localhost:9001").strip(),
         "enabled": _env_bool("MINIO_WEB_ENABLED", True),
     }
 
@@ -92,8 +93,9 @@ def persist_single_case(
 ) -> dict[str, Any]:
     """Persist Web evidence to MinIO without making MinIO part of model inference.
 
-    Only compact audit artifacts are uploaded. The potentially large model_batch/preprocessed
-    directories remain in the normal workspace and are deliberately not mirrored to MinIO.
+    Only compact audit artifacts are uploaded. Large model_batch/preprocessed directories
+    remain in the Web scratch volume only for the lifetime of the evaluation and are deleted
+    after durable PostgreSQL/MinIO persistence completes.
     """
     cfg = settings()
     if not cfg["enabled"]:
@@ -149,6 +151,7 @@ def persist_single_case(
         "prefix": prefix,
         "artifact_object_count": len(uploaded),
         "objects": uploaded,
+        "console_public_url": cfg.get("console_public_url"),
     }
     manifest_path = run_dir / "minio_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -166,6 +169,7 @@ def persist_single_case(
         "manifest_object": manifest_object,
         "manifest_sha256": manifest_record["sha256"],
         "objects": uploaded,
+        "console_public_url": cfg.get("console_public_url"),
     }
 
 
@@ -176,6 +180,7 @@ def status() -> dict[str, Any]:
         "endpoint": cfg["endpoint"],
         "bucket": cfg["bucket"],
         "secure": bool(cfg["secure"]),
+        "console_public_url": cfg.get("console_public_url"),
     }
     if not cfg["enabled"]:
         return {**base, "reachable": False, "status": "DISABLED"}

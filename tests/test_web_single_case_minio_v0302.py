@@ -34,6 +34,7 @@ def _fake_meta(path: Path, view: str):
 
 def test_dicom_only_inspection_resolves_four_views_without_ground_truth(tmp_path, monkeypatch):
     monkeypatch.setattr(single_case, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(single_case, "WEB_SCRATCH_ROOT", tmp_path)
     paths = _make_paths(tmp_path)
     mapping = dict(zip([Path(p).name for p in paths], single_case.REQUIRED_VIEWS))
     monkeypatch.setattr(single_case, "_read_dicom_metadata", lambda p: _fake_meta(p, mapping[p.name]))
@@ -51,6 +52,7 @@ def test_dicom_only_inspection_resolves_four_views_without_ground_truth(tmp_path
 
 def test_manual_view_assignment_recovers_missing_dicom_view_metadata(tmp_path, monkeypatch):
     monkeypatch.setattr(single_case, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(single_case, "WEB_SCRATCH_ROOT", tmp_path)
     paths = _make_paths(tmp_path)
     views = ["L_CC", "R_CC", "L_MLO", "R_MLO"]
     mapping = dict(zip([Path(p).name for p in paths], views))
@@ -73,6 +75,7 @@ def test_manual_view_assignment_recovers_missing_dicom_view_metadata(tmp_path, m
 
 def test_web_inference_is_label_blind_and_reuses_common_pipeline(tmp_path, monkeypatch):
     monkeypatch.setattr(single_case, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(single_case, "WEB_SCRATCH_ROOT", tmp_path)
     paths = _make_paths(tmp_path)
     mapping = dict(zip([Path(p).name for p in paths], single_case.REQUIRED_VIEWS))
     monkeypatch.setattr(single_case, "_read_dicom_metadata", lambda p: _fake_meta(p, mapping[p.name]))
@@ -115,13 +118,14 @@ def test_web_inference_is_label_blind_and_reuses_common_pipeline(tmp_path, monke
     assert result["ground_truth_received"] is False
     assert result["ground_truth_used"] is False
     assert result["persistence"]["minio"]["status"] == "SUCCESS"
-    assert "/output/single_cases/" in result["output_dir"]
+    assert result["local_persistence"] is False
     assert not (tmp_path / "output" / "experiments").exists()
     assert not (tmp_path / "output" / "normal_tests").exists()
 
 
 def test_minio_failure_is_non_blocking_for_prediction(tmp_path, monkeypatch):
     monkeypatch.setattr(single_case, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(single_case, "WEB_SCRATCH_ROOT", tmp_path)
     paths = _make_paths(tmp_path)
     mapping = dict(zip([Path(p).name for p in paths], single_case.REQUIRED_VIEWS))
     monkeypatch.setattr(single_case, "_read_dicom_metadata", lambda p: _fake_meta(p, mapping[p.name]))
@@ -199,7 +203,7 @@ def test_api_contract_has_no_ground_truth_or_training_fields():
     from mammography_agent.api import WebDicomCaseRequest
 
     req = WebDicomCaseRequest(dicom_paths=["/workspace/a.dcm", "/workspace/b.dcm", "/workspace/c.dcm", "/workspace/d.dcm"])
-    assert set(req.model_dump()) == {"dicom_paths", "view_assignments", "ensemble_weights", "inference_device", "run_id"}
+    assert set(req.model_dump()) == {"dicom_paths", "view_assignments", "ensemble_weights", "decision_threshold", "inference_device", "run_id"}
     with pytest.raises(Exception):
         WebDicomCaseRequest(dicom_paths=["a.dcm", "b.dcm", "c.dcm"])
 
@@ -220,6 +224,7 @@ def test_view_detection_uses_conservative_descriptive_metadata_fallbacks():
 
 def test_preview_generation_is_presentation_only_and_cached(tmp_path, monkeypatch):
     monkeypatch.setattr(single_case, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(single_case, "WEB_SCRATCH_ROOT", tmp_path)
     paths = _make_paths(tmp_path)
     calls = []
 
@@ -250,6 +255,7 @@ def test_dicom_preview_renderer_produces_display_png(tmp_path, monkeypatch):
     import numpy as np
 
     monkeypatch.setattr(single_case, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(single_case, "WEB_SCRATCH_ROOT", tmp_path)
     path = tmp_path / "preview.dcm"
     path.write_bytes(b"synthetic-dicom-placeholder")
     pixels = np.arange(32 * 24, dtype=np.uint16).reshape(32, 24)

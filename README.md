@@ -129,9 +129,15 @@ Si la metadata no permite resolver CC/MLO, Streamlit presenta una vista previa d
 
 La ruta Web reutiliza la política de orientación, `_infer_three`, Model Runner y `ensemble.soft_voting.vote`. PostgreSQL registra los resultados estructurados de la ejecución y MinIO conserva DICOM originales, representaciones canónicas y artefactos de auditoría. MinIO no participa en el cálculo de la predicción; una incidencia de persistencia no modifica un resultado inferencial ya completado.
 
-A partir de v0.31.0, la interfaz permite conservar los pesos base de `config/ensemble.yaml` o definir GMIC/NYU/GLAM para una evaluación Web individual. La suma debe ser 1.0. El override viaja en la petición del caso, queda registrado en el resultado y **no escribe** `config/ensemble.yaml` ni `config/experiments.yaml`; por tanto, no altera las combinaciones W01-W16 ni el flujo batch. El umbral de decisión permanece read-only y procede de la configuración base.
+A partir de v0.31.0, la interfaz permite conservar los pesos base de `config/ensemble.yaml` o definir GMIC/NYU/GLAM para una evaluación Web individual. La suma debe ser 1.0. El override viaja en la petición del caso, queda registrado en el resultado y **no escribe** `config/ensemble.yaml` ni `config/experiments.yaml`; por tanto, no altera las combinaciones W01-W16 ni el flujo batch. Hasta v0.33.0, el umbral de decisión permanecía de solo lectura y procedía de la configuración base. A partir de v0.34.0, el tab **Configuración y estado** permite conservar ese umbral base o definir un `decision_threshold` temporal para la evaluación Web; el valor no se escribe en YAML ni se reutiliza por los entrypoints batch.
 
 A partir de v0.32.1, la configuración operativa de la Web se concentra en el tab **Configuración y estado**. Allí se selecciona el dispositivo de inferencia Web (`CPU` o `GPU`) y los pesos del ensemble. El valor inicial del dispositivo procede de `WEB_INFERENCE_DEVICE` y por defecto es `cpu`. La selección viaja exclusivamente en `/single-cases/run` como `inference_device`; no modifica `GMIC_DEVICE`, `NYU_DEVICE`, `GLAM_DEVICE`, `config/models.yaml` ni los entrypoints batch. En modo CPU no se exige `gpu_probe`. En modo GPU se conserva el preflight ya existente y puede validarse con `docker compose exec fastapi python -m model_tools.validate_gpu --models all`.
+
+A partir de v0.32.2, el progreso Web utiliza tiempos de pared (`time.monotonic`) observados por FastAPI para cada etapa y cada llamada a modelo. Se distingue explícitamente la preparación del estudio, normalización de orientación, preparación de entradas del Model Runner, GMIC, NYU/DMV-CNN, GLAM, integración del ensemble y persistencia. Las métricas internas devueltas por cada runtime continúan guardándose como diagnóstico técnico, pero ya no se muestran como tiempo de ejecución Web. El botón de evaluación queda bloqueado mientras exista una solicitud en curso para evitar ejecuciones duplicadas.
+
+A partir de v0.33.0, la ruta Web deja de persistir artefactos del caso en el `workspace` del proyecto. Streamlit, FastAPI y Model Runner comparten el volumen Docker `web_scratch` montado en `/web-scratch`, utilizado únicamente como espacio temporal para uploads, previews, PNG canónicos, `data.pkl`, preprocesados y outputs intermedios. Al finalizar una evaluación, el directorio temporal del run y los DICOM staged se eliminan. La persistencia durable del caso queda limitada a PostgreSQL (registro estructurado, scores, configuración y tiempos) y MinIO (`runs/<run_id>/`). El `workspace` persistente conserva su responsabilidad histórica para batch, datasets, modelos, resume y experimentos; los caches/registries globales del runtime de modelos siguen siendo infraestructura compartida y no se consideran artefactos del caso Web.
+
+Los artefactos MinIO de una evaluación se almacenan en el bucket `mammography-web` (configurable mediante `MINIO_WEB_BUCKET`) bajo el prefijo `runs/<run_id>/`. La consola se publica por defecto en `http://localhost:9001`; la URL mostrada por Streamlit puede configurarse mediante `MINIO_CONSOLE_PUBLIC_URL`. Las credenciales se toman de `MINIO_ROOT_USER` y `MINIO_ROOT_PASSWORD` del `.env`. Dentro de cada prefijo se conservan `input/`, `canonical/`, `audit/`, `result/` y `manifest/` cuando los artefactos correspondientes existen.
 
 La implementación permanece separada de los entrypoints y configuraciones del flujo experimental masivo. Los componentes batch validados en v0.30.2 no se modifican en su comportamiento de inferencia, selección, freeze, Final Test o resume. Ver `docs/MIGRATION_V0_30_2_WEB_MINIO.md`.
 
@@ -152,8 +158,8 @@ Esta sección centraliza los comandos usados durante la validación del prototip
 | `docker compose logs -f model-runner` | Sigue el ciclo de inferencia del Model Runner: espera/adquisición GPU, inicio de contenedor temporal, inicio/fin de comando, éxito/fallo y métricas resumidas. | Nada. | Eventos de inferencia visibles sin spam de healthchecks. |
 | `./scripts/logs.sh` | Wrapper para seguir en vivo los logs de `fastapi` y `model-runner` con un tail inicial configurable (`TAIL_LINES=200 ./scripts/logs.sh`). | Nada. | Logs operativos de servicios; eventos CLI persisten además en `workspace/logs/*.jsonl`. |
 | `tail -f workspace/logs/audit.jsonl workspace/logs/model_runner.jsonl` | Sigue la auditoría persistente de CLI/pipeline y Runner desde el host. | Nada. | Eventos JSONL incluso cuando el comando se ejecutó mediante `docker compose exec`. |
-| `docker compose exec fastapi cat /app/VERSION` | Verifica versión del código dentro de FastAPI. | Nada. | `0.32.1`. |
-| `docker compose exec model-runner cat /runner/VERSION` | Verifica versión del Model Runner. | Nada. | `0.32.1`. |
+| `docker compose exec fastapi cat /app/VERSION` | Verifica versión del código dentro de FastAPI. | Nada. | `0.35.0`. |
+| `docker compose exec model-runner cat /runner/VERSION` | Verifica versión del Model Runner. | Nada. | `0.35.0`. |
 | `docker compose exec model-runner docker version` | Verifica cliente/daemon Docker desde el Runner. | Nada. | Client/Server accesibles. |
 | `docker compose exec model-runner docker info` | Diagnóstico detallado del daemon desde el Runner. | Nada. | Información del Engine sin error. |
 | `docker compose exec fastapi python -m model_tools.status` | Estado de imágenes, perfiles GPU y device por modelo. | Nada. | GMIC/NYU/GLAM `device=gpu` en workstation validada. |
@@ -1288,6 +1294,10 @@ The weight/threshold selection policy remains unchanged in this patch. AUPRC and
 
 
 
+## v0.32.2 — tiempos observados, control de concurrencia y acceso a artefactos Web
+
+v0.32.2 mantiene el pipeline batch y sus configuraciones sin cambios funcionales. La ruta Web añade medición wall-clock por etapa/modelo, expone la preparación de entradas como etapa independiente, bloquea el botón de evaluación durante una solicitud activa, contrae por defecto los resultados individuales de GMIC/NYU/GLAM y elimina del sidebar el indicador genérico de “trazabilidad de evidencias”. El detalle final muestra `run_id`, bucket y prefijo MinIO y puede enlazar a la consola mediante `MINIO_CONSOLE_PUBLIC_URL`.
+
 ## v0.32.1 — seguimiento de inferencia Web y compatibilidad CPU
 
 v0.32.1 corrige la compatibilidad de la ruta Web CPU con los runners históricos de GMIC/GLAM y mejora la observabilidad de la evaluación unitaria. La ruta Web mantiene el carácter label-blind: no recibe ground truth; para el contrato de salida del runner histórico se agregan únicamente `left_benign/right_benign=NaN` al `data.pkl` Web como metadata técnica opcional posterior al forward pass. El `data.pkl` canónico utilizado por batch permanece sin esas claves.
@@ -1362,3 +1372,36 @@ Validación de release dentro del runtime de FastAPI:
 ```bash
 docker compose exec fastapi python -m pytest -q
 ```
+
+
+## v0.33.0 — aislamiento de persistencia Web
+
+La ruta Web utiliza `/web-scratch` como volumen temporal independiente del bind mount `workspace/`. Los DICOM cargados, previews, artefactos intermedios y directorios de ejecución Web se eliminan al terminar el caso. PostgreSQL y MinIO son las únicas capas de persistencia durable de la evaluación Web.
+
+El flujo batch no utiliza `WEB_SCRATCH_ROOT`, `WEB_PERSIST_LOCAL` ni el volumen `web_scratch`. Los entrypoints `experiments.run`, `experiments.final_evaluation` y `tests_flow.normal`, los adapters RSNA, `soft_voting.py` y los YAML de modelos/ensemble/experimentos permanecen sin cambios. Los helpers compartidos de `build_batch` y orientación aceptan un resolver opcional exclusivamente para Web; cuando no se proporciona, se conserva la llamada histórica y `safe_workspace_path`.
+
+
+## v0.34.0 — umbral Web configurable y observabilidad por run_id
+
+La interfaz Web permite seleccionar un umbral de decisión personalizado entre 0 y 1. El valor se transmite en `decision_threshold` únicamente en la petición de inferencia unitaria y no modifica `config/ensemble.yaml`, `config/experiments.yaml` ni ningún parámetro del flujo batch. Si no se selecciona un umbral personalizado, la Web utiliza el valor base de `config/ensemble.yaml`. El resultado registra `threshold` y `threshold_source` (`BASELINE` o `WEB_OVERRIDE`) en PostgreSQL y en `single_case_result.json`.
+
+Las evaluaciones Web emiten eventos de depuración en stdout de FastAPI y Model Runner, correlacionados por `run_id`. Se registran configuración efectiva, inicio/fin de etapas, estado y tiempo wall-clock de cada modelo, scores, ensemble, persistencia, preparación del runtime del Model Runner y tiempo total de la petición al runner. Esto no altera entradas, pesos, thresholds ni comandos del batch.
+
+Para consultar una ejecución concreta:
+
+```bash
+./scripts/web-debug-logs.sh web-YYYYMMDDTHHMMSSZ-xxxxxxxx
+```
+
+Para exportarla a un archivo:
+
+```bash
+./scripts/web-debug-logs.sh web-YYYYMMDDTHHMMSSZ-xxxxxxxx run-debug.log
+```
+
+
+## v0.35.0 — persistencia de la configuración Web en PostgreSQL
+
+La configuración interactiva de la ruta Web (dispositivo CPU/GPU, modo y valores de pesos, modo y valor del umbral) se persiste en PostgreSQL en la tabla `web_evaluation_settings`. Al actualizar desde v0.34.x, si la tabla aún no contiene una configuración activa, la API intenta migrar una sola vez la configuración de la ejecución Web exitosa más reciente almacenada en `web_inference_runs`. La interfaz consulta `/single-cases/web-settings` al iniciar y restaura la última configuración válida; los cambios válidos se guardan automáticamente mediante `PUT /single-cases/web-settings`. Esta persistencia es exclusiva de la Web: no modifica `config/ensemble.yaml`, `config/experiments.yaml`, `config/models.yaml`, las variables `GMIC_DEVICE`/`NYU_DEVICE`/`GLAM_DEVICE` ni los entrypoints batch.
+
+La configuración aplicada a cada inferencia continúa registrándose además en `web_inference_runs`, de modo que cada `run_id` conserva su threshold, pesos, fuentes y dispositivo efectivos independientemente de cambios posteriores en la configuración Web activa.

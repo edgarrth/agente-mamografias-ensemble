@@ -21,6 +21,7 @@ import yaml
 from .health_logging import install_healthcheck_access_filter
 
 WORKSPACE = Path(os.getenv("WORKSPACE_ROOT", "/workspace"))
+WEB_SCRATCH = Path(os.getenv("WEB_SCRATCH_ROOT", "/web-scratch"))
 CONFIG = Path("/runner/config")
 META = WORKSPACE / "runtime" / "mammography_metarepository"
 ANCHOR = "mammography-workspace-anchor"
@@ -29,8 +30,10 @@ ALLOW_GPU = os.getenv("ALLOW_GPU", "false").lower() == "true"
 GPU = os.getenv("GPU_NUMBER", "0")
 BOOTSTRAP_MODE = os.getenv("MODEL_BOOTSTRAP_MODE", "lazy").lower()
 RESOURCE_SAMPLE_SECONDS = float(os.getenv("RESOURCE_SAMPLE_SECONDS", "2"))
+WEB_PERSIST_LOCAL = os.getenv("WEB_PERSIST_LOCAL", "false").strip().lower() in {"1", "true", "yes", "on"}
+_RUN_CONTEXT = threading.local()
 
-APP_VERSION = "0.32.1"
+APP_VERSION = "0.35.0"
 
 CONSOLE_LOG = logging.getLogger("mammography-model-runner")
 if not CONSOLE_LOG.handlers:
@@ -42,7 +45,7 @@ CONSOLE_LOG.setLevel(os.getenv("LOG_LEVEL", "INFO"))
 _CONSOLE_EVENT_EXACT = {
     "MODEL_RUNNER_READY", "GPU_LOCK_WAITING", "GPU_LOCK_ACQUIRED", "GPU_LOCK_RELEASED",
     "MODEL_RUN_STARTED", "MODEL_CHILD_CONTAINER_STARTED", "MODEL_COMMAND_STARTED",
-    "MODEL_COMMAND_COMPLETED", "MODEL_RUN_SUCCESS", "MODEL_RUN_FAILED",
+    "MODEL_COMMAND_COMPLETED", "MODEL_RUNTIME_READY", "MODEL_RUN_SUCCESS", "MODEL_RUN_FAILED",
     "MODEL_IMAGE_BUILD_STARTED", "MODEL_IMAGE_BUILD_COMPLETED",
     "GPU_MODEL_IMAGE_BUILD_STARTED", "GPU_MODEL_IMAGE_BUILD_COMPLETED",
     "GPU_MODEL_PROBE_FAILED", "MODEL_SMOKE_FAILED",
@@ -96,8 +99,6 @@ def configured_gpu_profiles() -> dict[str, str | None]:
 
 
 def log(event: str, model: str | None = None, **data):
-    p = WORKSPACE / "logs"
-    p.mkdir(parents=True, exist_ok=True)
     rec = {
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "component": "model-runner",
@@ -105,8 +106,12 @@ def log(event: str, model: str | None = None, **data):
         **({"model": model} if model else {}),
         **data,
     }
-    with (p / "model_runner.jsonl").open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+    context_run_id = str(data.get("run_id") or getattr(_RUN_CONTEXT, "run_id", "") or "")
+    if WEB_PERSIST_LOCAL or not context_run_id.startswith("web-"):
+        p = WORKSPACE / "logs"
+        p.mkdir(parents=True, exist_ok=True)
+        with (p / "model_runner.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
     if _console_event(event):
         level=logging.ERROR if event.endswith("_FAILED") else logging.INFO
         compact={k:v for k,v in rec.items() if k not in {"timestamp","component","stdout","stderr","cmd"}}
@@ -598,7 +603,8 @@ def predict_path(model: str) -> str:
 def patched_predict_dir(model: str, run_id: str) -> Path:
     upstream = spec_for(model)["upstream_model_name"]
     src = META / "models" / upstream / "predict"
-    dest = WORKSPACE / "runtime" / "predict_overrides" / run_id / model
+    runtime_root = WEB_SCRATCH if str(run_id).startswith("web-") else WORKSPACE
+    dest = runtime_root / "runtime" / "predict_overrides" / run_id / model
     if dest.exists():
         shutil.rmtree(dest)
     shutil.copytree(src, dest)
@@ -720,26 +726,37 @@ class PreprocessRequest(BaseModel):
 
 
 def validate_workspace_path(value: str) -> Path:
+    """Allow the historical batch workspace and the isolated Web scratch volume."""
     p = Path(value).resolve()
-    root = WORKSPACE.resolve()
-    if p != root and root not in p.parents:
-        raise ValueError(f"Path outside /workspace: {p}")
+    roots = (WORKSPACE.resolve(), WEB_SCRATCH.resolve())
+    if not any(p == root or root in p.parents for root in roots):
+        raise ValueError(f"Path outside approved runtime roots: {p}")
     return p
 
 
 def _run_under_optional_gpu_lock(model: str, req: RunRequest):
-    device = (req.device or configured_device_for(model)).lower()
-    if device == "gpu":
-        # One shared lock serializes all model GPU inference on the single research GPU.
-        log("GPU_LOCK_WAITING", model=model, run_id=req.run_id, gpu=GPU)
-        with shared_lock("gpu_inference"):
-            log("GPU_LOCK_ACQUIRED", model=model, run_id=req.run_id, gpu=GPU)
+    previous_run_id = getattr(_RUN_CONTEXT, "run_id", None)
+    _RUN_CONTEXT.run_id = req.run_id
+    try:
+        device = (req.device or configured_device_for(model)).lower()
+        if device == "gpu":
+            # One shared lock serializes all model GPU inference on the single research GPU.
+            log("GPU_LOCK_WAITING", model=model, run_id=req.run_id, gpu=GPU)
+            with shared_lock("gpu_inference"):
+                log("GPU_LOCK_ACQUIRED", model=model, run_id=req.run_id, gpu=GPU)
+                try:
+                    return _run_real_unlocked(model, req, device)
+                finally:
+                    log("GPU_LOCK_RELEASED", model=model, run_id=req.run_id, gpu=GPU)
+        return _run_real_unlocked(model, req, device)
+    finally:
+        if previous_run_id is None:
             try:
-                return _run_real_unlocked(model, req, device)
-            finally:
-                log("GPU_LOCK_RELEASED", model=model, run_id=req.run_id, gpu=GPU)
-    return _run_real_unlocked(model, req, device)
-
+                delattr(_RUN_CONTEXT, "run_id")
+            except AttributeError:
+                pass
+        else:
+            _RUN_CONTEXT.run_id = previous_run_id
 
 def _run_success_payload(info: dict, output_file: str, xai: list[str], resource_metrics: dict, stdout: str) -> dict:
     """Return the contract for a completed inference run.
@@ -760,11 +777,13 @@ def _run_success_payload(info: dict, output_file: str, xai: list[str], resource_
 
 
 def _run_real_unlocked(model: str, req: RunRequest, device: str):
+    request_started = time.monotonic()
     model = model.strip().lower()
     spec = spec_for(model)
     upstream = spec["upstream_model_name"]
     if device not in {"cpu", "gpu"}:
         raise ValueError("device must be cpu or gpu")
+    runtime_prepare_started = time.monotonic()
     if device == "gpu":
         if not ALLOW_GPU:
             raise RuntimeError("GPU_DISABLED: set ALLOW_GPU=true only after model_tools.gpu_probe returns GPU_READY")
@@ -775,6 +794,13 @@ def _run_real_unlocked(model: str, req: RunRequest, device: str):
     else:
         info = ensure_image(model)
         selected_image = image_tag(model)
+    runtime_prepare_elapsed = time.monotonic() - runtime_prepare_started
+    is_web_run = str(req.run_id).startswith("web-")
+    if is_web_run:
+        log(
+            "MODEL_RUNTIME_READY", model=model, run_id=req.run_id, device=device, image=selected_image,
+            runtime_prepare_elapsed_seconds=float(runtime_prepare_elapsed), image_ready=bool(info.get("status") == "READY"),
+        )
 
     image_dir = validate_workspace_path(req.image_dir)
     data = validate_workspace_path(req.data_pickle)
@@ -830,11 +856,23 @@ def _run_real_unlocked(model: str, req: RunRequest, device: str):
         for candidate in pre.rglob("visualization"):
             if candidate.is_dir():
                 xai += [str(p) for p in candidate.rglob("*") if p.is_file()]
-        log(
-            "MODEL_RUN_SUCCESS", model=model, run_id=req.run_id, output=str(out), xai_count=len(xai),
-            elapsed_seconds=resource_metrics.get("elapsed_seconds"),
-            max_gpu_memory_mib=resource_metrics.get("max_gpu_memory_mib"),
-        )
+        total_elapsed = time.monotonic() - request_started
+        if is_web_run:
+            log(
+                "MODEL_RUN_SUCCESS", model=model, run_id=req.run_id, output=str(out), xai_count=len(xai),
+                command_elapsed_seconds=resource_metrics.get("elapsed_seconds"),
+                runtime_prepare_elapsed_seconds=float(runtime_prepare_elapsed),
+                model_runner_total_elapsed_seconds=float(total_elapsed),
+                output_size_bytes=out.stat().st_size if out.exists() else None,
+                max_gpu_memory_mib=resource_metrics.get("max_gpu_memory_mib"),
+            )
+        else:
+            # Preserve the historical batch log payload exactly; v0.34 observability is Web-only.
+            log(
+                "MODEL_RUN_SUCCESS", model=model, run_id=req.run_id, output=str(out), xai_count=len(xai),
+                elapsed_seconds=resource_metrics.get("elapsed_seconds"),
+                max_gpu_memory_mib=resource_metrics.get("max_gpu_memory_mib"),
+            )
         return _run_success_payload(
             info=info,
             output_file=str(out),
@@ -844,6 +882,8 @@ def _run_real_unlocked(model: str, req: RunRequest, device: str):
         )
     finally:
         subprocess.run(["docker", "rm", "-f", child_container], capture_output=True, text=True)
+        if str(req.run_id).startswith("web-") and pred.exists():
+            shutil.rmtree(pred.parent, ignore_errors=True)
 
 
 

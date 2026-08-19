@@ -4,13 +4,16 @@ import datetime as dt
 import hashlib
 import json
 import re
+import shutil
+import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
-from .config import WORKSPACE_ROOT, load_yaml
+from .config import WORKSPACE_ROOT, WEB_SCRATCH_ROOT, load_yaml
 from .datasets.adapters import ManifestDatasetAdapter
 from .datasets.rsna import deterministic_selection_key
 from .ensemble.soft_voting import vote
@@ -38,14 +41,60 @@ def _id() -> str:
 
 
 def _workspace_path(value: str | Path) -> Path:
+    """Validate a Web input/runtime path without changing the batch workspace contract.
+
+    v0.33.0 stages Web uploads/runs under WEB_SCRATCH_ROOT. Existing absolute
+    WORKSPACE_ROOT inputs remain readable for backward compatibility, but Web output
+    is never persisted there.
+    """
     p = Path(value)
     if not p.is_absolute():
-        p = WORKSPACE_ROOT / p
+        p = WEB_SCRATCH_ROOT / p
     p = p.resolve()
-    root = WORKSPACE_ROOT.resolve()
-    if p != root and root not in p.parents:
-        raise ValueError(f"Path outside workspace is forbidden: {p}")
+    roots = (WEB_SCRATCH_ROOT.resolve(), WORKSPACE_ROOT.resolve())
+    if not any(p == root or root in p.parents for root in roots):
+        raise ValueError(f"Path outside approved Web runtime roots is forbidden: {p}")
     return p
+
+
+def _is_under(path: Path, root: Path) -> bool:
+    path = path.resolve()
+    root = root.resolve()
+    return path == root or root in path.parents
+
+
+def _cleanup_web_scratch(run_dir: Path, dicom_paths: list[str]) -> None:
+    """Remove Web-only scratch data. Batch workspace paths are never deleted."""
+    scratch = WEB_SCRATCH_ROOT.resolve()
+    if _is_under(run_dir, scratch):
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+    upload_parents: set[Path] = set()
+    preview_root = WEB_SCRATCH_ROOT / "previews"
+    for raw in dicom_paths:
+        path = Path(raw)
+        try:
+            resolved = path.resolve()
+        except Exception:
+            continue
+        if not _is_under(resolved, scratch):
+            continue
+        try:
+            if resolved.is_file():
+                digest = _sha256(resolved)
+                preview = preview_root / f"{digest[:24]}.png"
+                preview.unlink(missing_ok=True)
+                resolved.unlink(missing_ok=True)
+            if _is_under(resolved.parent, WEB_SCRATCH_ROOT / "uploads"):
+                upload_parents.add(resolved.parent)
+        except Exception:
+            pass
+    for parent in sorted(upload_parents, key=lambda x: len(x.parts), reverse=True):
+        shutil.rmtree(parent, ignore_errors=True)
+
+
+_WEB_PROGRESS: dict[str, dict[str, Any]] = {}
+_WEB_PROGRESS_LOCK = threading.Lock()
 
 
 def _safe_token(value: object) -> str:
@@ -239,7 +288,7 @@ def create_dicom_previews(dicom_paths: list[str]) -> dict[str, Any]:
     if not dicom_paths:
         return {"status": "READY", "previews": []}
     paths = [_workspace_path(value) for value in dicom_paths]
-    preview_root = WORKSPACE_ROOT / "input" / "web_previews"
+    preview_root = WEB_SCRATCH_ROOT / "previews"
     previews: list[dict[str, Any]] = []
     for path in paths:
         if not path.is_file():
@@ -475,7 +524,7 @@ def web_ensemble_config() -> dict[str, Any]:
         "threshold": threshold,
         "discordance_threshold": discordance,
         "source": "config/ensemble.yaml:baseline",
-        "editable_fields": ["weights"],
+        "editable_fields": ["weights", "threshold"],
         "batch_configuration_mutated": False,
     }
 
@@ -496,6 +545,17 @@ def _resolve_web_weights(override: dict[str, float] | None) -> tuple[dict[str, f
     return weights, "WEB_OVERRIDE"
 
 
+
+
+def _resolve_web_threshold(override: float | None) -> tuple[float, str]:
+    """Resolve a Web-only decision threshold without mutating batch YAML/configuration."""
+    _, baseline_threshold, _ = _baseline_config()
+    if override is None:
+        return float(baseline_threshold), "BASELINE"
+    threshold = float(override)
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError("Web decision threshold must be between 0 and 1")
+    return threshold, "WEB_OVERRIDE"
 
 
 def _resolve_web_device(value: str | None) -> str:
@@ -528,37 +588,63 @@ def _jsonable(value: Any) -> Any:
     return value
 
 
-def _write_web_progress(run_dir: Path, run_id: str, *, stage: str, state: str, message: str, models: dict[str, Any] | None = None, started_at: str | None = None, error: str | None = None) -> None:
+def _write_web_progress(
+    run_dir: Path,
+    run_id: str,
+    *,
+    stage: str,
+    state: str,
+    message: str,
+    models: dict[str, Any] | None = None,
+    stages: dict[str, Any] | None = None,
+    started_at: str | None = None,
+    error: str | None = None,
+) -> None:
+    # Progress is transient process state, not a persisted case artifact.
     payload = {
         "run_id": run_id,
         "stage": stage,
         "state": state,
         "message": message,
-        "models": models or {},
+        "models": _jsonable(models or {}),
+        "stages": _jsonable(stages or {}),
         "updated_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
     }
     if started_at:
         payload["started_at_utc"] = started_at
     if error:
         payload["error"] = error
-    write_json(run_dir / "web_progress.json", payload)
+    with _WEB_PROGRESS_LOCK:
+        _WEB_PROGRESS[run_id] = payload
+        # Keep only a bounded number of compact progress records.
+        if len(_WEB_PROGRESS) > 256:
+            oldest = next(iter(_WEB_PROGRESS))
+            _WEB_PROGRESS.pop(oldest, None)
 
 
 def get_single_case_progress(run_id: str) -> dict[str, Any]:
     safe = _safe_token(run_id)
     if safe != run_id or not run_id.startswith("web-"):
         raise ValueError("Invalid Web run_id")
-    path = WORKSPACE_ROOT / "output" / "single_cases" / run_id / "web_progress.json"
-    if not path.exists():
-        return {"run_id": run_id, "stage": "QUEUED", "state": "PENDING", "message": "La evaluación está iniciándose.", "models": {}}
-    return json.loads(path.read_text(encoding="utf-8"))
-
+    with _WEB_PROGRESS_LOCK:
+        payload = _WEB_PROGRESS.get(run_id)
+        if payload is not None:
+            return json.loads(json.dumps(payload))
+    return {
+        "run_id": run_id,
+        "stage": "QUEUED",
+        "state": "PENDING",
+        "message": "La evaluación está iniciándose.",
+        "models": {},
+        "stages": {},
+    }
 
 def run_single_case(
     *,
     dicom_paths: list[str],
     view_assignments: dict[str, str] | None = None,
     ensemble_weights: dict[str, float] | None = None,
+    decision_threshold: float | None = None,
     inference_device: str = "cpu",
     request_run_id: str | None = None,
 ) -> dict[str, Any]:
@@ -566,17 +652,61 @@ def run_single_case(
     run_id = str(request_run_id or _id())
     if _safe_token(run_id) != run_id or not run_id.startswith("web-"):
         raise ValueError("Invalid Web run_id")
-    run_dir = WORKSPACE_ROOT / "output" / "single_cases" / run_id
+    run_dir = WEB_SCRATCH_ROOT / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
     started = dt.datetime.now(dt.timezone.utc)
+    wall_started = time.monotonic()
     web_device = _resolve_web_device(inference_device)
+    weights, weights_source = _resolve_web_weights(ensemble_weights)
+    threshold, threshold_source = _resolve_web_threshold(decision_threshold)
+    _, _, discordance_threshold = _baseline_config()
     audit("WEB_SINGLE_CASE_STARTED", run_id=run_id, uploaded_dicoms=len(dicom_paths), inference_device=web_device)
-    model_progress = {model: {"state": "PENDING"} for model in ("gmic", "nyu", "glam")}
-    started_iso = started.isoformat()
-    _write_web_progress(
-        run_dir, run_id, stage="PREPARATION", state="RUNNING",
-        message="Preparando las cuatro proyecciones mamográficas.", models=model_progress, started_at=started_iso,
+    audit(
+        "WEB_CONFIGURATION_RESOLVED",
+        run_id=run_id,
+        inference_device=web_device,
+        weights=weights,
+        weights_source=weights_source,
+        threshold=threshold,
+        threshold_source=threshold_source,
+        discordance_threshold=discordance_threshold,
+        batch_configuration_mutated=False,
     )
+
+    model_progress = {model: {"state": "PENDING"} for model in ("gmic", "nyu", "glam")}
+    stage_progress = {
+        stage: {"state": "PENDING"}
+        for stage in ("PREPARATION", "ORIENTATION", "MODEL_INPUT_PREPARATION", "ENSEMBLE", "PERSISTENCE")
+    }
+    stage_started_clock: dict[str, float] = {}
+    started_iso = started.isoformat()
+
+    def _publish(stage: str, message: str, *, state: str = "RUNNING", error: str | None = None) -> None:
+        _write_web_progress(
+            run_dir,
+            run_id,
+            stage=stage,
+            state=state,
+            message=message,
+            models=model_progress,
+            stages=stage_progress,
+            started_at=started_iso,
+            error=error,
+        )
+
+    def _begin_stage(key: str, message: str) -> None:
+        stage_started_clock[key] = time.monotonic()
+        stage_progress[key] = {"state": "RUNNING"}
+        audit("WEB_STAGE_STARTED", run_id=run_id, stage=key, message=message)
+        _publish(key, message)
+
+    def _finish_stage(key: str) -> float:
+        elapsed = time.monotonic() - stage_started_clock[key]
+        stage_progress[key] = {"state": "SUCCESS", "elapsed_seconds": float(elapsed)}
+        audit("WEB_STAGE_COMPLETED", run_id=run_id, stage=key, elapsed_seconds=float(elapsed))
+        return float(elapsed)
+
+    _begin_stage("PREPARATION", "Preparando el estudio mamográfico.")
 
     try:
         df, preparation = _build_uploaded_case(
@@ -585,52 +715,81 @@ def run_single_case(
             view_assignments=view_assignments,
         )
         df.to_csv(run_dir / "input_study.csv", index=False)
-        _write_web_progress(
-            run_dir, run_id, stage="ORIENTATION", state="RUNNING",
-            message="Aplicando la política de orientación del estudio.", models=model_progress, started_at=started_iso,
-        )
+        _finish_stage("PREPARATION")
 
-        resolved = resolve_orientation(df, run_dir / "orientation_resolution", run_id)
+        _begin_stage("ORIENTATION", "Aplicando la política de orientación del estudio.")
+        resolved = resolve_orientation(df, run_dir / "orientation_resolution", run_id, source_path_resolver=_workspace_path)
         resolved.to_csv(run_dir / "resolved_study.csv", index=False)
+        _finish_stage("ORIENTATION")
 
         # Mechanical label blindness: the Web frame contains no clinical labels; keep
         # all label-shaped columns NaN immediately before the common model pipeline.
         inference_input = resolved.copy()
         for label_column in ("ground_truth", "left_ground_truth", "right_ground_truth"):
             inference_input[label_column] = float("nan")
+
+        def _stage_progress_callback(*, stage: str, state: str, elapsed_seconds: float | None = None) -> None:
+            item: dict[str, Any] = {"state": state}
+            if elapsed_seconds is not None:
+                item["elapsed_seconds"] = float(elapsed_seconds)
+            stage_progress[stage] = item
+            audit("WEB_STAGE_PROGRESS", run_id=run_id, stage=stage, state=state, elapsed_seconds=elapsed_seconds)
+            message = (
+                "Preparando las entradas canónicas para los modelos."
+                if state == "RUNNING"
+                else "Entradas de modelos preparadas."
+            )
+            _publish(stage, message, state="FAILED" if state == "FAILED" else "RUNNING")
+
         def _model_progress_callback(*, model: str, state: str, elapsed_seconds: float | None = None) -> None:
             item = dict(model_progress.get(model, {}))
             item["state"] = state
             if elapsed_seconds is not None:
                 item["elapsed_seconds"] = float(elapsed_seconds)
             model_progress[model] = item
-            label = {"gmic": "GMIC", "nyu": "NYU / DMV-CNN", "glam": "GLAM"}.get(model, model.upper())
-            verb = "Ejecutando" if state == "RUNNING" else "Completado"
-            _write_web_progress(
-                run_dir, run_id, stage="MODELS", state="RUNNING",
-                message=f"{verb}: {label}.", models=model_progress, started_at=started_iso,
+            audit(
+                "WEB_MODEL_PROGRESS", run_id=run_id, model=model, state=state,
+                elapsed_seconds=elapsed_seconds, inference_device=web_device,
             )
+            label = {"gmic": "GMIC", "nyu": "NYU / DMV-CNN", "glam": "GLAM"}.get(model, model.upper())
+            if state == "RUNNING":
+                message = f"Ejecutando: {label}."
+            elif state == "FAILED":
+                message = f"Error durante la ejecución de {label}."
+            else:
+                message = f"Completado: {label}."
+            _publish("MODELS", message, state="FAILED" if state == "FAILED" else "RUNNING")
 
         scores = _infer_three(
-            inference_input, run_dir, run_id, device=web_device,
-            web_label_blind_compat=True, progress_callback=_model_progress_callback,
+            inference_input,
+            run_dir,
+            run_id,
+            device=web_device,
+            web_label_blind_compat=True,
+            progress_callback=_model_progress_callback,
+            stage_progress_callback=_stage_progress_callback,
         )
         if len(scores) != 1:
             raise RuntimeError(f"Expected one prediction row; got {len(scores)}")
 
-        _, threshold, discordance_threshold = _baseline_config()
-        weights, weights_source = _resolve_web_weights(ensemble_weights)
         row = scores.iloc[0]
         model_scores = {
             "gmic": float(row.gmic_score),
             "nyu": float(row.nyu_score),
             "glam": float(row.glam_score),
         }
-        _write_web_progress(
-            run_dir, run_id, stage="ENSEMBLE", state="RUNNING",
-            message="Integrando las probabilidades de los tres modelos.", models=model_progress, started_at=started_iso,
-        )
+        audit("WEB_MODEL_SCORES_COLLECTED", run_id=run_id, **model_scores)
+
+        _begin_stage("ENSEMBLE", "Integrando las probabilidades de los tres modelos.")
         ensemble = vote(model_scores, weights, threshold, discordance_threshold)
+        _finish_stage("ENSEMBLE")
+        audit(
+            "WEB_ENSEMBLE_COMPUTED", run_id=run_id,
+            ensemble_malignancy_score=float(ensemble.ensemble_malignancy_score),
+            classification=ensemble.classification, threshold=float(ensemble.threshold),
+            threshold_source=threshold_source, weights=weights, weights_source=weights_source,
+            model_range=float(ensemble.model_range), discordance=bool(ensemble.discordance),
+        )
 
         orientation_summary_path = run_dir / "orientation_resolution" / "orientation_policy_summary.json"
         orientation_summary = (
@@ -646,7 +805,7 @@ def run_single_case(
         xai = json.loads(xai_path.read_text(encoding="utf-8")) if xai_path.exists() else {}
         resource_path = run_dir / "resource_metrics.csv"
         resources = pd.read_csv(resource_path).to_dict("records") if resource_path.exists() else []
-        inference_elapsed = (dt.datetime.now(dt.timezone.utc) - started).total_seconds()
+        inference_elapsed = time.monotonic() - wall_started
 
         payload: dict[str, Any] = {
             "run_id": run_id,
@@ -665,6 +824,7 @@ def run_single_case(
             "classification": ensemble.classification,
             "ensemble_malignancy_score": float(ensemble.ensemble_malignancy_score),
             "threshold": float(ensemble.threshold),
+            "threshold_source": threshold_source,
             "weights": {k: float(v) for k, v in ensemble.weights.items()},
             "weights_source": weights_source,
             "inference_device": web_device,
@@ -676,19 +836,26 @@ def run_single_case(
             "discordance_threshold": discordance_threshold,
             "orientation": {"summary": orientation_summary, "resolution": orientation_resolution},
             "xai_artifacts": xai,
+            # Resource metrics are retained as model-runtime diagnostics. Web-visible
+            # execution times are reported separately from monotonic wall-clock timing.
             "resource_metrics": resources,
+            "execution_timings": {
+                "stages": _jsonable(stage_progress),
+                "models": _jsonable(model_progress),
+            },
             "inference_elapsed_seconds": float(inference_elapsed),
             "overall_elapsed_seconds": float(inference_elapsed),
-            "output_dir": str(run_dir),
-            "persistence": {"postgresql": {"status": "PENDING"}, "minio": {"status": "PENDING"}},
+            "local_persistence": False,
+            "persistence": {
+                "postgresql": {"status": "PENDING"},
+                "minio": {"status": "PENDING"},
+                "local_scratch": {"status": "TRANSIENT", "retained": False},
+            },
         }
         result_path = run_dir / "single_case_result.json"
         write_json(result_path, _jsonable(payload))
 
-        _write_web_progress(
-            run_dir, run_id, stage="PERSISTENCE", state="RUNNING",
-            message="Registrando resultados y evidencias de la evaluación.", models=model_progress, started_at=started_iso,
-        )
+        _begin_stage("PERSISTENCE", "Registrando el resultado de la evaluación.")
         # MinIO is audit persistence only. A MinIO failure never changes the model result.
         try:
             canonical_views = {
@@ -711,8 +878,46 @@ def run_single_case(
             audit("WEB_MINIO_PERSISTENCE_FAILED", run_id=run_id, error=str(exc))
 
         payload["persistence"]["minio"] = minio_result
+        audit(
+            "WEB_MINIO_PERSISTENCE_COMPLETED", run_id=run_id, status=minio_result.get("status"),
+            bucket=minio_result.get("bucket"), prefix=minio_result.get("prefix"),
+            object_count=minio_result.get("object_count"),
+        )
+
+        durable_ref = (
+            f"minio://{minio_result.get('bucket')}/{minio_result.get('prefix')}"
+            if minio_result.get("status") == "SUCCESS"
+            else f"postgresql://web_inference_runs/{run_id}"
+        )
+        save_run(run_id, "single_case_web", "SUCCESS", durable_ref)
+        overall_before_db = time.monotonic() - wall_started
+        save_web_inference(
+            run_id=run_id,
+            status="SUCCESS",
+            classification=payload["classification"],
+            ensemble_score=payload["ensemble_malignancy_score"],
+            threshold=payload["threshold"],
+            threshold_source=payload["threshold_source"],
+            ensemble_weights=payload["weights"],
+            weights_source=payload["weights_source"],
+            inference_device=payload["inference_device"],
+            overall_elapsed_seconds=float(overall_before_db),
+            gmic_score=model_scores["gmic"],
+            nyu_score=model_scores["nyu"],
+            glam_score=model_scores["glam"],
+            minio_bucket=minio_result.get("bucket"),
+            minio_prefix=minio_result.get("prefix"),
+            minio_status=minio_result.get("status"),
+            artifact_path=durable_ref,
+        )
         payload["persistence"]["postgresql"] = {"status": "SUCCESS"}
-        payload["overall_elapsed_seconds"] = float((dt.datetime.now(dt.timezone.utc) - started).total_seconds())
+        audit("WEB_POSTGRESQL_PERSISTENCE_COMPLETED", run_id=run_id, status="SUCCESS")
+        _finish_stage("PERSISTENCE")
+        payload["execution_timings"] = {
+            "stages": _jsonable(stage_progress),
+            "models": _jsonable(model_progress),
+        }
+        payload["overall_elapsed_seconds"] = float(time.monotonic() - wall_started)
         write_json(result_path, _jsonable(payload))
 
         if minio_result.get("status") == "SUCCESS":
@@ -722,25 +927,13 @@ def run_single_case(
                 payload["persistence"]["minio"]["result_refresh_error"] = f"{type(exc).__name__}: {exc}"
                 write_json(result_path, _jsonable(payload))
 
-        save_run(run_id, "single_case_web", "SUCCESS", str(run_dir))
-        save_web_inference(
-            run_id=run_id,
-            status="SUCCESS",
-            classification=payload["classification"],
-            ensemble_score=payload["ensemble_malignancy_score"],
-            threshold=payload["threshold"],
-            ensemble_weights=payload["weights"],
-            weights_source=payload["weights_source"],
-            inference_device=payload["inference_device"],
-            overall_elapsed_seconds=payload["overall_elapsed_seconds"],
-            gmic_score=model_scores["gmic"],
-            nyu_score=model_scores["nyu"],
-            glam_score=model_scores["glam"],
-            minio_bucket=minio_result.get("bucket"),
-            minio_prefix=minio_result.get("prefix"),
-            minio_status=minio_result.get("status"),
-            artifact_path=str(run_dir),
-        )
+        # Do not return transient filesystem locations that will be removed below.
+        for item in (payload.get("input_preparation", {}).get("files") or []):
+            item.pop("path", None)
+        for item in (payload.get("input_preparation", {}).get("selected_views") or {}).values():
+            item.pop("path", None)
+            item.pop("canonical_png", None)
+
         audit(
             "WEB_SINGLE_CASE_COMPLETED",
             run_id=run_id,
@@ -749,26 +942,36 @@ def run_single_case(
             minio_status=minio_result.get("status"),
             overall_elapsed_seconds=payload["overall_elapsed_seconds"],
             inference_device=web_device,
+            threshold=payload["threshold"],
+            threshold_source=payload["threshold_source"],
+            weights_source=payload["weights_source"],
         )
-        _write_web_progress(
-            run_dir, run_id, stage="COMPLETED", state="SUCCESS",
-            message="Evaluación completada.", models=model_progress, started_at=started_iso,
-        )
+        _publish("COMPLETED", "Evaluación completada.", state="SUCCESS")
         return _jsonable(payload)
     except Exception as exc:
-        failed_elapsed = (dt.datetime.now(dt.timezone.utc) - started).total_seconds()
+        failed_elapsed = time.monotonic() - wall_started
+        for stage_name, item in list(stage_progress.items()):
+            if str(item.get("state")) == "RUNNING":
+                elapsed = time.monotonic() - stage_started_clock.get(stage_name, time.monotonic())
+                stage_progress[stage_name] = {"state": "FAILED", "elapsed_seconds": float(max(0.0, elapsed))}
         write_json(run_dir / "error.json", {
             "type": type(exc).__name__, "message": str(exc), "run_id": run_id,
             "training_performed": False, "ground_truth_received": False,
             "overall_elapsed_seconds": float(failed_elapsed),
+            "execution_timings": {"stages": _jsonable(stage_progress), "models": _jsonable(model_progress)},
         })
-        _write_web_progress(
-            run_dir, run_id, stage="FAILED", state="FAILED",
-            message="La evaluación se interrumpió.", models=model_progress, started_at=started_iso, error=str(exc),
+        _publish("FAILED", "La evaluación se interrumpió.", state="FAILED", error=str(exc))
+        audit(
+            "WEB_SINGLE_CASE_FAILED", run_id=run_id, error=str(exc),
+            error_type=type(exc).__name__, overall_elapsed_seconds=float(failed_elapsed),
+            inference_device=web_device, threshold=threshold, threshold_source=threshold_source,
         )
-        audit("WEB_SINGLE_CASE_FAILED", run_id=run_id, error=str(exc))
         try:
-            save_run(run_id, "single_case_web", "FAILED", str(run_dir))
+            save_run(run_id, "single_case_web", "FAILED", f"postgresql://research_runs/{run_id}")
         except Exception:
             pass
         raise
+    finally:
+        _cleanup_web_scratch(run_dir, dicom_paths)
+        audit("WEB_SCRATCH_CLEANUP_COMPLETED", run_id=run_id, scratch_retained=False)
+

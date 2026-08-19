@@ -12,10 +12,15 @@ if not LOG.handlers:
 LOG.setLevel(os.getenv("LOG_LEVEL","INFO"))
 
 def audit(event: str, **data):
-    ensure_workspace()
     record={"timestamp":datetime.datetime.now(datetime.timezone.utc).isoformat(),"event":event,**data}
-    path=WORKSPACE_ROOT/"logs"/"audit.jsonl"
-    with path.open("a",encoding="utf-8") as fh: fh.write(json.dumps(record,ensure_ascii=False,default=str)+"\n")
+    # Web case artifacts are durable only in PostgreSQL/MinIO from v0.33.0.
+    # Keep Web audit events on stdout unless local persistence is explicitly enabled.
+    web_local = os.getenv("WEB_PERSIST_LOCAL", "false").strip().lower() in {"1", "true", "yes", "on"}
+    is_web_event = str(event).startswith("WEB_") or str(data.get("run_id") or "").startswith("web-")
+    if not (is_web_event and not web_local):
+        ensure_workspace()
+        path=WORKSPACE_ROOT/"logs"/"audit.jsonl"
+        with path.open("a",encoding="utf-8") as fh: fh.write(json.dumps(record,ensure_ascii=False,default=str)+"\n")
     LOG.info("%s %s", event, data)
 
 def log_configuration_additions():

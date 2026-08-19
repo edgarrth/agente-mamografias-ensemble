@@ -8,6 +8,7 @@ services:
     - mkdir -p /workspace && sleep infinity
     volumes:
     - ${HOST_WORKSPACE:-./workspace}:/workspace
+    - web_scratch:/web-scratch
     restart: unless-stopped
   postgres:
     image: postgres:16-alpine
@@ -74,8 +75,11 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DOCKER_HOST: unix:///var/run/docker.sock
       ALLOW_GPU: ${ALLOW_GPU:-false}
+      WEB_SCRATCH_ROOT: /web-scratch
+      WEB_PERSIST_LOCAL: ${WEB_PERSIST_LOCAL:-false}
     volumes:
     - ${HOST_WORKSPACE:-./workspace}:/workspace
+    - web_scratch:/web-scratch
     - type: bind
       source: /var/run/docker.sock
       target: /var/run/docker.sock
@@ -137,8 +141,12 @@ services:
       MINIO_WEB_BUCKET: ${MINIO_WEB_BUCKET:-mammography-web}
       MINIO_WEB_ENABLED: ${MINIO_WEB_ENABLED:-true}
       MINIO_SECURE: ${MINIO_SECURE:-false}
+      MINIO_CONSOLE_PUBLIC_URL: ${MINIO_CONSOLE_PUBLIC_URL:-http://localhost:9001}
+      WEB_SCRATCH_ROOT: /web-scratch
+      WEB_PERSIST_LOCAL: ${WEB_PERSIST_LOCAL:-false}
     volumes:
     - ${HOST_WORKSPACE:-./workspace}:/workspace
+    - web_scratch:/web-scratch
     - ./config:/app/config:ro
     ports:
     - 8000:8000
@@ -171,8 +179,12 @@ services:
       CONFIG_ROOT: /app/config
       API_URL: http://fastapi:8000
       WEB_INFERENCE_DEVICE: ${WEB_INFERENCE_DEVICE:-cpu}
+      WEB_SCRATCH_ROOT: /web-scratch
+      WEB_PERSIST_LOCAL: ${WEB_PERSIST_LOCAL:-false}
+      WEB_SCRATCH_TTL_MINUTES: ${WEB_SCRATCH_TTL_MINUTES:-60}
     volumes:
     - ${HOST_WORKSPACE:-./workspace}:/workspace
+    - web_scratch:/web-scratch
     - ./config:/app/config:ro
     ports:
     - 8501:8501
@@ -183,3 +195,4 @@ services:
 volumes:
   postgres_data: {}
   minio_data: {}
+  web_scratch: {}

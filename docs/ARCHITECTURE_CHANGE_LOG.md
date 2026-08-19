@@ -318,3 +318,20 @@ Corrige la entrada de `orientation_counterfactual_diagnostic` para registrar `id
 - Final evaluation uses the same resumable orientation/inference mechanism, but remains blocked until `frozen_configuration.yaml` exists.
 - Successful cache/hash mismatches fail closed; incomplete chunks are restarted from the beginning while earlier successful chunks are reused.
 - FastAPI research image now includes pytest and the release test/static-contract files so `docker compose exec fastapi python -m pytest -q` is a supported validation command.
+
+
+## v0.34.0 — Web decision threshold + correlated observability
+
+- Added per-request `decision_threshold` to the Web single-case path only.
+- Added `threshold_source` to Web result/PostgreSQL traceability.
+- Added run-correlated Web logs in FastAPI and Web-only detailed Model Runner timing.
+- Added `scripts/web-debug-logs.sh` to extract FastAPI + Model Runner logs by `run_id`.
+- Batch experiment configuration, entrypoints, model commands and persisted artifacts are unchanged.
+
+
+## v0.35.0 — persistent Web evaluation settings
+
+- Persisted the active Streamlit evaluation configuration in PostgreSQL (`web_evaluation_settings`).
+- Added dedicated Web-only read/write API endpoints for configuration hydration.
+- Kept per-run settings in `web_inference_runs` for immutable run-level traceability.
+- Batch configuration files and entrypoints remain unchanged.

@@ -36,6 +36,7 @@ def test_canonical_batch_builder_still_omits_optional_benign_keys():
 
 def test_web_progress_is_written_and_retrievable(tmp_path, monkeypatch):
     monkeypatch.setattr(single_case, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(single_case, "WEB_SCRATCH_ROOT", tmp_path)
     run_id = "web-20260818T220503Z-test0001"
     run_dir = tmp_path / "output" / "single_cases" / run_id
     run_dir.mkdir(parents=True)
@@ -53,8 +54,8 @@ def test_web_progress_is_written_and_retrievable(tmp_path, monkeypatch):
 def test_streamlit_ui_hides_deploy_and_uses_live_progress_and_value_oriented_storage():
     text = Path("ui/streamlit_app.py").read_text(encoding="utf-8")
     assert '[data-testid="stToolbar"] {display:none !important;}' in text
-    assert "Trazabilidad de evidencias habilitada" in text
-    assert "Evidencias reproducibles" in text
+    assert "Trazabilidad de evidencias habilitada" not in text
+    assert "Persistencia de resultados" in text
     assert "MinIO disponible" not in text
     assert 'f"/single-cases/progress/{run_id}"' in text
     assert "ThreadPoolExecutor" in text
@@ -66,6 +67,7 @@ def test_streamlit_ui_hides_deploy_and_uses_live_progress_and_value_oriented_sto
 def test_pipeline_progress_callback_is_opt_in_and_batch_call_sites_remain_default():
     text = Path("mammography_agent/pipeline.py").read_text(encoding="utf-8")
     assert "progress_callback=None" in text
+    assert "stage_progress_callback=None" in text
     assert "web_label_blind_compat: bool = False" in text
     assert 'pred=_infer_three(sub,cdir,f"{run_id}-c{chunk_index:04d}")' in text
     assert "_apply_web_label_blind_compat(pkl)" in text

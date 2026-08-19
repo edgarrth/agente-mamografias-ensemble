@@ -41,11 +41,11 @@ def _label_blind(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _run_preflight(df: pd.DataFrame, root: Path, run_id: str) -> pd.DataFrame:
+def _run_preflight(df: pd.DataFrame, root: Path, run_id: str, source_path_resolver=None) -> pd.DataFrame:
     batch = root / "model_batch"
     batch.mkdir(parents=True, exist_ok=True)
     blinded = _label_blind(df)
-    images, pkl_path = build_batch(blinded, batch)
+    images, pkl_path = build_batch(blinded, batch, source_path_resolver=source_path_resolver)
     pre = batch / "preprocessed" / "nyu"
     result = preprocess_model("nyu", run_id, str(images), str(pkl_path), str(pre))
     center = Path(result["center_data"])
@@ -70,7 +70,7 @@ def _run_preflight(df: pd.DataFrame, root: Path, run_id: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def resolve_orientation(df: pd.DataFrame, output_dir: str | Path, run_id: str) -> pd.DataFrame:
+def resolve_orientation(df: pd.DataFrame, output_dir: str | Path, run_id: str, source_path_resolver=None) -> pd.DataFrame:
     """Apply a strict label-independent orientation policy before classifier inference.
 
     Trigger: all four unique views have non-zero upstream distance_from_starting_side.
@@ -84,7 +84,13 @@ def resolve_orientation(df: pd.DataFrame, output_dir: str | Path, run_id: str) -
         original_df["horizontal_flip"] = "NO"
     original_df["horizontal_flip"] = original_df["horizontal_flip"].map(_normalize_flip)
 
-    original = _run_preflight(original_df, out / "original", f"{run_id}-orientation-original")
+    if source_path_resolver is None:
+        original = _run_preflight(original_df, out / "original", f"{run_id}-orientation-original")
+    else:
+        original = _run_preflight(
+            original_df, out / "original", f"{run_id}-orientation-original",
+            source_path_resolver=source_path_resolver,
+        )
     original.to_csv(out / "orientation_original_views.csv", index=False)
     counts = original.groupby("study_id")["distance_nonzero"].sum().astype(int)
     suspects = set(counts[counts == len(VIEWS)].index.astype(str))
@@ -101,7 +107,13 @@ def resolve_orientation(df: pd.DataFrame, output_dir: str | Path, run_id: str) -
     if suspects:
         variant = original_df[original_df.study_id.astype(str).isin(suspects)].copy().reset_index(drop=True)
         variant["horizontal_flip"] = variant["horizontal_flip"].map(_toggle)
-        counter = _run_preflight(variant, out / "counterfactual", f"{run_id}-orientation-counterfactual")
+        if source_path_resolver is None:
+            counter = _run_preflight(variant, out / "counterfactual", f"{run_id}-orientation-counterfactual")
+        else:
+            counter = _run_preflight(
+                variant, out / "counterfactual", f"{run_id}-orientation-counterfactual",
+                source_path_resolver=source_path_resolver,
+            )
         counter.to_csv(out / "orientation_counterfactual_views.csv", index=False)
         csmall = counter.rename(columns={
             "horizontal_flip": "counterfactual_horizontal_flip",

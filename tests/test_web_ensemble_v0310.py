@@ -29,7 +29,7 @@ def test_api_weights_are_web_only_and_validated():
     assert req.ensemble_weights == {"gmic": 0.5, "nyu": 0.3, "glam": 0.2}
     dumped = req.model_dump()
     assert "ground_truth" not in dumped
-    assert "threshold" not in dumped
+    assert dumped["decision_threshold"] is None
 
     with pytest.raises(Exception):
         WebDicomCaseRequest(
@@ -43,7 +43,7 @@ def test_web_config_endpoint_payload_does_not_mutate_batch(monkeypatch):
     cfg = single_case.web_ensemble_config()
     assert cfg["weights"] == {"gmic": 0.4, "nyu": 0.3, "glam": 0.3}
     assert cfg["threshold"] == 0.45
-    assert cfg["editable_fields"] == ["weights"]
+    assert cfg["editable_fields"] == ["weights", "threshold"]
     assert cfg["batch_configuration_mutated"] is False
 
 

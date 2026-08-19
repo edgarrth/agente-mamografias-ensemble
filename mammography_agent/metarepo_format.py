@@ -3,7 +3,8 @@ from pathlib import Path
 import pandas as pd, pickle, shutil, re
 from .workspace import safe_workspace_path
 
-def build_batch(df: pd.DataFrame, run_dir: Path):
+def build_batch(df: pd.DataFrame, run_dir: Path, source_path_resolver=None):
+    resolver = source_path_resolver or safe_workspace_path
     images=run_dir/"images"; images.mkdir(parents=True,exist_ok=True)
     data=[]; study_order=[]; sanitized_keys=[]
     for _,r in df.reset_index(drop=True).iterrows():
@@ -15,7 +16,7 @@ def build_batch(df: pd.DataFrame, run_dir: Path):
         for col,key,suffix in [
             ("l_cc","L-CC","L_CC"),("r_cc","R-CC","R_CC"),
             ("l_mlo","L-MLO","L_MLO"),("r_mlo","R-MLO","R_MLO")]:
-            src=safe_workspace_path(str(r[col])); stem=f"{sid}_{suffix}"; dst=images/f"{stem}.png"
+            src=resolver(str(r[col])); stem=f"{sid}_{suffix}"; dst=images/f"{stem}.png"
             if not dst.exists(): shutil.copy2(src,dst)
             names[key]=[stem]
         left = int(r["left_ground_truth"]) if "left_ground_truth" in r.index and pd.notna(r["left_ground_truth"]) else 0
