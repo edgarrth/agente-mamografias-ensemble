@@ -335,3 +335,19 @@ Corrige la entrada de `orientation_counterfactual_diagnostic` para registrar `id
 - Added dedicated Web-only read/write API endpoints for configuration hydration.
 - Kept per-run settings in `web_inference_runs` for immutable run-level traceability.
 - Batch configuration files and entrypoints remain unchanged.
+
+
+## v0.35.1 — safe Web settings hydration
+
+- Fixed the Streamlit startup race that could replace persisted custom Web settings with baseline defaults after a transient settings API failure.
+- Web settings persistence is explicit: successful hydration loads the PostgreSQL fingerprint without writing, and changes are saved only through **Actualizar configuración**. Unsaved changes block inference; baseline restoration is a separate explicit action.
+- Web evaluation and configuration controls fail closed while settings hydration is unavailable.
+- No batch experiment configuration, entrypoint, inference input, or artifact contract is changed.
+
+## v0.35.3
+
+- Stabilized PostgreSQL, MinIO and Web scratch Docker volume names across versioned extraction directories.
+- Added one-time guarded migration helper for legacy Compose-scoped durable volumes.
+- Simplified Streamlit configuration messaging as requested.
+- Current UI configuration may be used immediately for Web inference; `Actualizar configuración` persists it for future sessions.
+- No Batch behavior or Batch configuration source changed.

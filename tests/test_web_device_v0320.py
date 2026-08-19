@@ -89,7 +89,8 @@ def test_web_configuration_files_are_not_mutated_by_device_selector():
     text = Path("ui/streamlit_app.py").read_text(encoding="utf-8")
     assert '"inference_device": web_device' in text
     assert 'os.environ[' not in text
-    assert 'config/models.yaml' in text
+    assert '.write_text(' not in text
+    assert 'yaml.safe_dump' not in text
     assert 'config/ensemble.yaml' in text
     assert 'config/experiments.yaml' in text
 

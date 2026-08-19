@@ -193,6 +193,9 @@ services:
         condition: service_healthy
     restart: unless-stopped
 volumes:
-  postgres_data: {}
-  minio_data: {}
-  web_scratch: {}
+  postgres_data:
+    name: ${POSTGRES_VOLUME_NAME:-mammography-postgres-data}
+  minio_data:
+    name: ${MINIO_VOLUME_NAME:-mammography-minio-data}
+  web_scratch:
+    name: ${WEB_SCRATCH_VOLUME_NAME:-mammography-web-scratch}

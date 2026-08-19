@@ -337,3 +337,35 @@ Docker Engine/NVIDIA hardware are not exposed in the packaging sandbox, therefor
 - Streamlit restores the persisted device, weights and decision threshold after reruns/new browser sessions and automatically saves valid changes.
 - No batch YAML or batch entrypoint is mutated by this feature.
 - Added one-time fallback migration from the latest successful `web_inference_runs` configuration when `web_evaluation_settings` is initially empty.
+
+
+## v0.35.1 Web settings startup-race regression
+
+- A failed initial Web-settings GET is distinct from a successful baseline response.
+- Unhydrated Streamlit sessions cannot write display defaults to PostgreSQL.
+- Web evaluation is blocked until persisted settings have been successfully recovered.
+- Successful hydration records the loaded PostgreSQL fingerprint without issuing a write.
+- Invalid settings cannot be persisted through the explicit update action.
+- Full regression and packaged-ZIP regression are required before release.
+- Batch configuration and formal-experiment entrypoints remain unchanged.
+
+- v0.35.1 uses an explicit "Actualizar configuración" action; Streamlit reruns and widget changes never persist settings automatically.
+- Unsaved Web configuration changes block inference until they are explicitly updated.
+- "Restaurar configuración base" is a separate explicit action.
+
+
+## v0.35.2 README documentation refresh
+
+- Documentation-only patch over v0.35.1.
+- README reorganized around functionality, Mermaid architecture, code structure, operational scripts, Web flow, Batch flow, Dockerfiles, complete Batch execution and Web operation.
+- No model, preprocessing, orientation, ensemble, dataset, Batch or Web inference behavior changed.
+
+## v0.35.3 Stable Web persistence across versioned directories
+
+- Source regression: `189 passed`.
+- PostgreSQL and MinIO Compose volumes now have explicit stable names independent of the extracted project directory.
+- This prevents a new version directory from silently creating an empty PostgreSQL/MinIO data set.
+- Added a guarded legacy-volume migration helper for one-time adoption of project-scoped volumes.
+- Streamlit no longer displays the requested routine banners/captions for CPU mode, pending settings, or execution-button blocking.
+- Unsaved Web control changes no longer block the current evaluation; the explicit update action persists them for future sessions.
+- Batch entrypoints, pipeline, orientation, model adapters, ensemble logic and batch YAML remain unchanged.

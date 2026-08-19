@@ -250,11 +250,21 @@ def _ensemble_config_payload() -> dict[str, Any] | None:
         return None
 
 
-def _web_settings_payload() -> dict[str, Any] | None:
-    try:
-        return _api_json("GET", "/single-cases/web-settings", timeout=20)
-    except Exception:
-        return None
+def _web_settings_payload(*, attempts: int = 2) -> tuple[dict[str, Any] | None, str | None]:
+    """Load the persisted Web settings without confusing transport failures with baseline settings.
+
+    A failed GET must never be interpreted as "no persisted settings" because doing so can
+    overwrite a valid PostgreSQL configuration with UI defaults during Streamlit startup.
+    """
+    last_error: str | None = None
+    for attempt in range(max(1, int(attempts))):
+        try:
+            return _api_json("GET", "/single-cases/web-settings", timeout=20), None
+        except Exception as exc:
+            last_error = str(exc)
+            if attempt + 1 < max(1, int(attempts)):
+                time.sleep(0.25)
+    return None, last_error or "No fue posible recuperar la configuración Web guardada."
 
 
 def _persist_web_settings(*, device: str, weight_mode: str, weights: dict[str, float], threshold_mode: str, threshold: float) -> dict[str, Any] | None:
@@ -268,12 +278,16 @@ def _persist_web_settings(*, device: str, weight_mode: str, weights: dict[str, f
     return _api_json("PUT", "/single-cases/web-settings", timeout=20, json=payload)
 
 
-def _hydrate_web_settings(settings: dict[str, Any] | None, ensemble_config: dict[str, Any] | None) -> None:
+def _hydrate_web_settings(settings: dict[str, Any] | None, ensemble_config: dict[str, Any] | None) -> bool:
     if st.session_state.get("_web_settings_hydrated"):
-        return
+        return True
+    # Hydration is allowed only after a successful API response. A transport/API failure is
+    # not equivalent to baseline configuration and must never trigger a settings write.
+    if settings is None:
+        return False
     baseline_weights = ((ensemble_config or {}).get("weights") or {"gmic": 0.333333, "nyu": 0.333333, "glam": 0.333334})
     baseline_threshold = float((ensemble_config or {}).get("threshold", 0.50))
-    persisted = settings or {}
+    persisted = settings
     weights = persisted.get("weights") or baseline_weights
     device = str(persisted.get("inference_device") or DEFAULT_WEB_DEVICE).lower()
     if device not in {"cpu", "gpu"}:
@@ -291,6 +305,7 @@ def _hydrate_web_settings(settings: dict[str, Any] | None, ensemble_config: dict
     st.session_state["web_decision_threshold"] = float(persisted.get("decision_threshold", baseline_threshold))
     st.session_state["_web_settings_persisted_at"] = persisted.get("updated_at")
     st.session_state["_web_settings_hydrated"] = True
+    return True
 
 
 def _model_runtime_ready(model: dict[str, Any], requested_device: str | None = None) -> tuple[bool, str]:
@@ -611,6 +626,15 @@ def _current_web_settings(ensemble_config: dict[str, Any] | None) -> tuple[str, 
     return device, mode, weights, threshold_mode, threshold, valid
 
 
+def _web_settings_fingerprint(ensemble_config: dict[str, Any] | None) -> tuple[Any, ...]:
+    device, mode, weights, threshold_mode, threshold, _ = _current_web_settings(ensemble_config)
+    return (
+        device, mode,
+        round(float(weights["gmic"]), 8), round(float(weights["nyu"]), 8), round(float(weights["glam"]), 8),
+        threshold_mode, round(float(threshold), 8),
+    )
+
+
 def _render_methodology_summary() -> None:
     items = [
         ("1. Recepción y verificación", "Validación del estudio DICOM, identidad del examen, lateralidad y proyección."),
@@ -640,15 +664,31 @@ st.warning("Prototipo de investigación. Los resultados no sustituyen la evaluac
 status = _status_payload()
 storage = _storage_payload()
 ensemble_config = _ensemble_config_payload()
-persisted_web_settings = _web_settings_payload()
-_hydrate_web_settings(persisted_web_settings, ensemble_config)
+persisted_web_settings, web_settings_load_error = _web_settings_payload()
+just_hydrated = False
+if not st.session_state.get("_web_settings_hydrated") and persisted_web_settings is not None:
+    just_hydrated = _hydrate_web_settings(persisted_web_settings, ensemble_config)
+elif st.session_state.get("_web_settings_hydrated"):
+    just_hydrated = True
+
+# Defaults are display-only until a successful settings hydration occurs. Autosave and
+# evaluation remain disabled while PostgreSQL/FastAPI settings cannot be recovered.
 st.session_state.setdefault("web_inference_device", DEFAULT_WEB_DEVICE)
 st.session_state.setdefault("web_weight_mode", "Configuración base")
 st.session_state.setdefault("web_threshold_mode", "Configuración base")
 web_device, config_mode, web_weights, threshold_mode, threshold_value, weights_valid = _current_web_settings(ensemble_config)
+settings_hydrated = bool(st.session_state.get("_web_settings_hydrated"))
+if just_hydrated and settings_hydrated and "_web_settings_last_saved_fingerprint" not in st.session_state:
+    # The successfully loaded PostgreSQL value is the active configuration. The UI never
+    # writes settings during hydration; persistence is explicit through the configuration tab.
+    st.session_state["_web_settings_last_saved_fingerprint"] = _web_settings_fingerprint(ensemble_config)
 with st.sidebar:
     st.header("Sesión de evaluación")
     st.caption(f"Modo de inferencia Web · {web_device.upper()}")
+    if not settings_hydrated:
+        st.warning("Configuración Web pendiente de recuperación. No se ejecutarán evaluaciones ni se guardarán valores base hasta recuperar PostgreSQL.")
+        if st.button("Reintentar configuración", use_container_width=True, key="retry_web_settings_sidebar"):
+            st.rerun()
     if status is None:
         st.error("Servicio de evaluación no disponible")
     else:
@@ -746,7 +786,15 @@ No se solicitan etiquetas diagnósticas ni archivos de entrenamiento.
     elif study_ready and web_device == "cpu" and not runtimes_ready:
         st.warning("Uno o más servicios de modelos no están disponibles para la evaluación Web en CPU.")
 
-    ready = study_ready and weights_valid and runtimes_ready
+    # Current Web controls are immediately valid for the current evaluation.
+    # "Actualizar configuración" persists them in PostgreSQL for future sessions,
+    # but an unsaved edit does not block the current inference.
+    ready = study_ready and weights_valid and runtimes_ready and settings_hydrated
+    if study_ready and not settings_hydrated:
+        st.warning(
+            "La evaluación está temporalmente bloqueada porque no fue posible recuperar la configuración Web guardada. "
+            "Use «Reintentar configuración» para evitar ejecutar el estudio con valores base no confirmados."
+        )
     st.session_state.setdefault("web_eval_running", False)
     st.markdown('<div id="web-evaluation-progress"></div>', unsafe_allow_html=True)
     running = bool(st.session_state.get("web_eval_running", False))
@@ -758,9 +806,6 @@ No se solicitan etiquetas diagnósticas ni archivos de entrenamiento.
         on_click=_queue_web_evaluation,
         key="execute_web_evaluation",
     )
-    if running:
-        st.caption("La acción permanece bloqueada hasta que finalice la evaluación actual para evitar solicitudes duplicadas.")
-
     pending = bool(st.session_state.pop("web_eval_pending", False))
     if pending:
         request_started = time.monotonic()
@@ -893,25 +938,27 @@ No se solicitan etiquetas diagnósticas ni archivos de entrenamiento.
 
 with config_tab:
     st.subheader("Configuración de la evaluación Web")
-    st.caption(
-        "Los parámetros de esta sección se aplican únicamente a las evaluaciones iniciadas desde Streamlit. "
-        "No modifican config/models.yaml, config/ensemble.yaml, config/experiments.yaml ni las variables de dispositivo utilizadas por el proceso batch."
-    )
-
+    if not settings_hydrated:
+        st.error(
+            "No fue posible recuperar la configuración Web persistida en PostgreSQL. "
+            "Los controles se muestran en modo seguro y no se guardará ninguna configuración hasta recuperar el estado persistido."
+        )
+        if web_settings_load_error:
+            with st.expander("Detalle de conexión", expanded=False):
+                st.code(web_settings_load_error)
+        if st.button("Reintentar configuración", key="retry_web_settings_config"):
+            st.rerun()
     st.markdown("**Dispositivo de inferencia**")
     st.radio(
         "Ejecución de los modelos",
         ["cpu", "gpu"],
         key="web_inference_device",
         horizontal=True,
+        disabled=not settings_hydrated,
         format_func=lambda value: "CPU" if value == "cpu" else "GPU",
         help="CPU no requiere gpu_probe. GPU utiliza aceleración y conserva la validación GPU del Model Runner. Esta selección se envía solamente en la petición Web actual.",
     )
     selected_device = str(st.session_state.get("web_inference_device", DEFAULT_WEB_DEVICE)).lower()
-    if selected_device == "cpu":
-        st.info("Modo CPU: la evaluación Web no requiere validación GPU. El proceso batch conserva su configuración de dispositivo independiente.")
-    else:
-        st.info("Modo GPU: la evaluación Web requiere que los runtimes GPU estén preparados y cuenten con un gpu_probe vigente.")
 
     st.markdown("**Pesos del ensemble**")
     baseline_weights = ((ensemble_config or {}).get("weights") or {"gmic": 0.333333, "nyu": 0.333333, "glam": 0.333334})
@@ -920,14 +967,15 @@ with config_tab:
         ["Configuración base", "Configuración personalizada"],
         key="web_weight_mode",
         horizontal=True,
+        disabled=not settings_hydrated,
         help="Los pesos personalizados se aplican únicamente a la evaluación Web y no se escriben en los YAML del proyecto.",
     )
     selected_mode = str(st.session_state.get("web_weight_mode", "Configuración base"))
     if selected_mode == "Configuración personalizada":
         w1, w2, w3 = st.columns(3)
-        w1.number_input("GMIC", min_value=0.0, max_value=1.0, value=float(st.session_state.get("web_weight_gmic", baseline_weights.get("gmic", 0.333333))), step=0.05, format="%.6f", key="web_weight_gmic")
-        w2.number_input("NYU / DMV-CNN", min_value=0.0, max_value=1.0, value=float(st.session_state.get("web_weight_nyu", baseline_weights.get("nyu", 0.333333))), step=0.05, format="%.6f", key="web_weight_nyu")
-        w3.number_input("GLAM", min_value=0.0, max_value=1.0, value=float(st.session_state.get("web_weight_glam", baseline_weights.get("glam", 0.333334))), step=0.05, format="%.6f", key="web_weight_glam")
+        w1.number_input("GMIC", min_value=0.0, max_value=1.0, value=float(st.session_state.get("web_weight_gmic", baseline_weights.get("gmic", 0.333333))), step=0.05, format="%.6f", key="web_weight_gmic", disabled=not settings_hydrated)
+        w2.number_input("NYU / DMV-CNN", min_value=0.0, max_value=1.0, value=float(st.session_state.get("web_weight_nyu", baseline_weights.get("nyu", 0.333333))), step=0.05, format="%.6f", key="web_weight_nyu", disabled=not settings_hydrated)
+        w3.number_input("GLAM", min_value=0.0, max_value=1.0, value=float(st.session_state.get("web_weight_glam", baseline_weights.get("glam", 0.333334))), step=0.05, format="%.6f", key="web_weight_glam", disabled=not settings_hydrated)
         shown_weights = {
             "gmic": float(st.session_state.get("web_weight_gmic", baseline_weights.get("gmic", 0.333333))),
             "nyu": float(st.session_state.get("web_weight_nyu", baseline_weights.get("nyu", 0.333333))),
@@ -952,6 +1000,7 @@ with config_tab:
         ["Configuración base", "Configuración personalizada"],
         key="web_threshold_mode",
         horizontal=True,
+        disabled=not settings_hydrated,
         help="El umbral personalizado se aplica únicamente a esta evaluación Web y no modifica config/ensemble.yaml ni config/experiments.yaml.",
     )
     selected_threshold_mode = str(st.session_state.get("web_threshold_mode", "Configuración base"))
@@ -959,7 +1008,7 @@ with config_tab:
         shown_threshold = st.number_input(
             "Threshold", min_value=0.0, max_value=1.0,
             value=float(st.session_state.get("web_decision_threshold", baseline_threshold)),
-            step=0.01, format="%.4f", key="web_decision_threshold",
+            step=0.01, format="%.4f", key="web_decision_threshold", disabled=not settings_hydrated,
             help="Clasifica CÁNCER cuando el score combinado es mayor o igual a este valor. Solo afecta la ruta Web.",
         )
         st.caption("Umbral Web temporal para las evaluaciones iniciadas desde esta sesión. Los experimentos batch conservan su configuración independiente.")
@@ -968,7 +1017,9 @@ with config_tab:
         st.metric("Threshold base", f"{shown_threshold:.4f}")
         st.caption("Valor leído de config/ensemble.yaml. La interfaz no modifica ese archivo.")
 
-    # Persist the Web-only configuration in PostgreSQL so it survives evaluation reruns and new browser sessions.
+    # The Web configuration is persisted only after an explicit user action. This avoids
+    # writes during Streamlit reruns and prevents display defaults from overwriting a valid
+    # PostgreSQL configuration after a transient read failure.
     stored_candidate_weights = {k: float(v) for k, v in shown_weights.items()}
     stored_candidate_threshold = float(shown_threshold)
     settings_valid = (
@@ -981,7 +1032,32 @@ with config_tab:
         round(stored_candidate_weights["gmic"], 8), round(stored_candidate_weights["nyu"], 8), round(stored_candidate_weights["glam"], 8),
         selected_threshold_mode, round(stored_candidate_threshold, 8),
     )
-    if settings_valid and st.session_state.get("_web_settings_last_saved_fingerprint") != settings_fingerprint:
+    persisted_fingerprint = st.session_state.get("_web_settings_last_saved_fingerprint")
+    settings_dirty = bool(settings_hydrated and settings_fingerprint != persisted_fingerprint)
+
+    if not settings_hydrated:
+        st.caption("La configuración no puede actualizarse hasta recuperar correctamente el estado persistido desde PostgreSQL.")
+    elif not settings_dirty:
+        persisted_at = st.session_state.get("_web_settings_persisted_at")
+        suffix = f" · {persisted_at}" if persisted_at else ""
+        st.caption(f"Configuración guardada en PostgreSQL{suffix}.")
+
+    action_col, reset_col = st.columns([2, 1])
+    update_clicked = action_col.button(
+        "Actualizar configuración",
+        type="primary",
+        use_container_width=True,
+        disabled=(not settings_hydrated) or (not settings_valid) or (not settings_dirty),
+        key="update_web_settings",
+    )
+    reset_clicked = reset_col.button(
+        "Restaurar configuración base",
+        use_container_width=True,
+        disabled=not settings_hydrated,
+        key="reset_web_settings",
+    )
+
+    if update_clicked:
         try:
             saved_settings = _persist_web_settings(
                 device=selected_device,
@@ -993,13 +1069,35 @@ with config_tab:
             st.session_state["_web_settings_last_saved_fingerprint"] = settings_fingerprint
             st.session_state["_web_settings_persisted_at"] = (saved_settings or {}).get("updated_at")
             st.session_state.pop("_web_settings_save_error", None)
+            st.success("Configuración actualizada correctamente.")
+            st.rerun()
+        except Exception as exc:
+            st.session_state["_web_settings_save_error"] = str(exc)
+
+    if reset_clicked:
+        base_weights = {k: float(v) for k, v in baseline_weights.items()}
+        try:
+            saved_settings = _persist_web_settings(
+                device=DEFAULT_WEB_DEVICE,
+                weight_mode="Configuración base",
+                weights=base_weights,
+                threshold_mode="Configuración base",
+                threshold=baseline_threshold,
+            )
+            # Re-hydrate from PostgreSQL on the next run. Widget-backed keys are intentionally
+            # not mutated after their widgets have been instantiated in the current Streamlit run.
+            st.session_state["_web_settings_hydrated"] = False
+            st.session_state.pop("_web_settings_last_saved_fingerprint", None)
+            st.session_state["_web_settings_persisted_at"] = (saved_settings or {}).get("updated_at")
+            st.session_state.pop("_web_settings_save_error", None)
+            st.rerun()
         except Exception as exc:
             st.session_state["_web_settings_save_error"] = str(exc)
 
     if st.session_state.get("_web_settings_save_error"):
-        st.warning("La configuración actual se aplica a esta sesión, pero no pudo persistirse en PostgreSQL.")
-    else:
-        st.caption("Los cambios válidos de dispositivo, pesos y umbral se guardan automáticamente en PostgreSQL y se restauran al volver a abrir la interfaz.")
+        st.warning("No fue posible actualizar la configuración en PostgreSQL. Los cambios permanecen sin aplicar.")
+        with st.expander("Detalle de persistencia", expanded=False):
+            st.code(str(st.session_state["_web_settings_save_error"]))
 
     st.divider()
     st.subheader("Disponibilidad de modelos")

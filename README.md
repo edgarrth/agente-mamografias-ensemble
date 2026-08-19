@@ -1,394 +1,431 @@
-# Mammography AI Agent — prototipo de tesis de maestría
+# Mammography AI Agent
 
-Prototipo local y reproducible que orquesta **GMIC + DMV-CNN / NYU Breast Cancer Classifier + GLAM** y combina sus `malignancy_score` mediante **Weighted Soft Voting**.
+**Versión:** 0.35.3 — corrección de persistencia Web entre upgrades  
+**Propósito:** prototipo de tesis de maestría para inferencia mamográfica con **GMIC + DMV-CNN/NYU + GLAM** y combinación mediante **Weighted Soft Voting**.
 
-> **Uso exclusivo de investigación.** No es un dispositivo médico, no emite diagnóstico autónomo y requiere revisión humana.
+> **Uso exclusivo de investigación.** Este software no es un dispositivo médico, no sustituye la evaluación de un radiólogo y sus resultados no constituyen un diagnóstico clínico.
 
-## Principios del prototipo
+## Contenido
 
-- No entrena modelos, no hace fine-tuning, LoRA ni nuevas classifier heads.
-- No usa LLM, RAG ni APIs externas de inferencia.
-- No contiene un modelo sustituto ni predicciones simuladas: si un modelo real no puede ejecutarse, la corrida falla explícitamente.
-- Usa LangGraph únicamente como máquina de estados determinística.
-- Mantiene inputs, datasets, modelos/runtime, resultados y logs en una carpeta visible desde el host: `./workspace`.
-- **Docker no descarga datasets al arrancar.** El investigador elige explícitamente `cbis_ddsm`, `vindr` o `all`.
-- La descarga, preparación y cantidad de casos de una prueba son decisiones independientes.
+1. [Explicación de la funcionalidad](#1-explicación-de-la-funcionalidad)
+2. [Diagrama de arquitectura](#2-diagrama-de-arquitectura)
+3. [Explicación de la arquitectura](#3-explicación-de-la-arquitectura)
+4. [Estructura del proyecto](#4-estructura-del-proyecto)
+5. [Clases y módulos de código principales](#5-clases-y-módulos-de-código-principales)
+6. [Scripts operativos](#6-scripts-operativos)
+7. [Flujo Web](#7-flujo-web)
+8. [Flujo Batch](#8-flujo-batch)
+9. [Dockerfiles y Docker Compose](#9-dockerfiles-y-docker-compose)
+10. [Ejecución completa del proceso Batch](#10-ejecución-completa-del-proceso-batch)
+11. [Ejecución y configuración del flujo Web](#11-ejecución-y-configuración-del-flujo-web)
+12. [Configuración, persistencia y artefactos](#12-configuración-persistencia-y-artefactos)
+13. [Limitaciones y reglas metodológicas](#13-limitaciones-y-reglas-metodológicas)
+14. [Documentación adicional](#14-documentación-adicional)
 
-## Arquitectura simple
+---
 
-```text
-Streamlit
-   |
-FastAPI / LangGraph
-   |
-   v
-Model Runner (controlador único, sin frameworks ML)
-   |
-   +----------------+----------------+
-   |                |                |
-   v                v                v
-mammography-     mammography-     mammography-
-model-gmic       model-nyu        model-glam
-(imagen aislada) (imagen aislada) (imagen aislada)
-   |                |                |
-   +----------------+----------------+
-                    |
-           Weighted Soft Voting
-                    |
-PostgreSQL + MinIO + workspace/output + logs
-```
+# 1. Explicación de la funcionalidad
 
-Docker Compose mantiene **un solo servicio persistente `model-runner`**. Ese servicio es un controlador técnico liviano: recibe las solicitudes de FastAPI/LangGraph, selecciona el modelo, construye/reutiliza su imagen Docker y crea un contenedor de inferencia temporal.
+## 1.1 Objetivo funcional
 
-Las dependencias de IA **no están en el Model Runner**. Las imágenes reales de los modelos son independientes:
+El proyecto implementa un agente de IA para investigación en mamografía que ejecuta tres modelos de deep learning previamente entrenados:
+
+- **GMIC**.
+- **DMV-CNN / NYU Breast Cancer Classifier**.
+- **GLAM**.
+
+Cada modelo produce un score de malignidad. El sistema transforma esos scores a una representación canónica por estudio y calcula un score combinado mediante **Weighted Soft Voting**:
 
 ```text
-mammography-model-gmic:research
-mammography-model-nyu:research
-mammography-model-glam:research
+ensemble_score =
+    gmic_score * w_gmic
+  + nyu_score  * w_nyu
+  + glam_score * w_glam
 ```
 
-Cada imagen conserva su propio Python/framework/dependencias legacy definidos por el metarepositorio de NYU. Cuando una referencia histórica de infraestructura ya no puede resolverse, v0.6 aplica una **capa de compatibilidad auditable** que modifica únicamente la línea `FROM` configurada; no cambia el código del modelo, sus commits, checkpoints ni lógica de inferencia. El Model Runner no instala PyTorch, TensorFlow, CUDA Toolkit ni cuDNN. Esto evita mezclar versiones incompatibles en un mismo entorno.
-
-Durante una inferencia el flujo es:
+Los pesos deben sumar `1.0`. La clasificación binaria se obtiene con un umbral:
 
 ```text
-FastAPI/LangGraph
-      |
-      v
-model-runner
-      |
-      +--> crea mammography-inference-gmic-<run>  -> ejecuta GMIC -> elimina
-      +--> crea mammography-inference-nyu-<run>   -> ejecuta NYU  -> elimina
-      +--> crea mammography-inference-glam-<run>  -> ejecuta GLAM -> elimina
+si ensemble_score >= threshold  -> CANCER
+si ensemble_score <  threshold  -> NO CANCER
 ```
 
-Si se habilita GPU, el Model Runner aplica un lock compartido en `/workspace/runtime/locks/gpu_inference.lock`: **solo un modelo ejecuta inferencia GPU a la vez**. El runner decide cuándo asignar la GPU al contenedor hijo mediante Docker/NVIDIA, pero las librerías CUDA/PyTorch necesarias para el cálculo pertenecen a la imagen de cada modelo.
+Los scores se utilizan como scores experimentales de malignidad y **no deben interpretarse como probabilidades clínicas calibradas**.
 
-## 1. Requisitos
+## 1.2 Dos modos de ejecución
 
-- Linux x86-64. WSL2 es válido si Docker está correctamente integrado.
-- Docker Engine + Docker Compose v2.
-- Internet solo durante la primera construcción de las imágenes oficiales de los modelos y adquisición autorizada de datasets.
-- Para GPU: NVIDIA Driver + NVIDIA Container Toolkit.
+El proyecto tiene dos canales independientes que reutilizan la misma lógica inferencial central:
 
-### RTX 50 / Blackwell
+### Flujo Web
 
-Las imágenes/entornos oficiales de estos modelos usan versiones antiguas de CUDA/PyTorch. La selección de dispositivo es una decisión de despliegue **por modelo**, mientras que el perfil técnico GPU pertenece a `config/models.yaml`. En v0.16, `.env.example` refleja la configuración que ya fue validada en la workstation objetivo RTX 5060 Ti:
+Orientado a evaluar **un estudio individual** desde Streamlit. El usuario carga archivos DICOM, revisa las proyecciones, configura dispositivo/pesos/threshold Web y ejecuta la inferencia. La ruta Web:
 
-```env
-DEFAULT_MODEL_DEVICE=cpu
-GMIC_DEVICE=gpu
-NYU_DEVICE=gpu
-GLAM_DEVICE=gpu
-ALLOW_GPU=true
-GPU_NUMBER=0
-```
+- no recibe `train.csv` ni ground truth;
+- no modifica los YAML del proceso Batch;
+- usa un scratch temporal separado del `workspace` Batch;
+- persiste resultados estructurados en PostgreSQL;
+- persiste artefactos compactos en MinIO;
+- limpia los archivos temporales del caso al finalizar.
 
-Cada modelo posee su propio `gpu_compatibility.profile` en `config/models.yaml` y ya pasó `gpu_probe` y smoke test completo en esa workstation. No existe un `GPU_RUNTIME_PROFILE` global y la imagen legacy `:research` nunca se selecciona para GPU. En hardware distinto, vuelva temporalmente los `*_DEVICE` a `cpu` hasta validar el perfil correspondiente.
+### Flujo Batch
 
-## 2. Inicio rápido
+Orientado a la tesis, validación de modelos, análisis de datasets y experimento formal. Permite:
 
-```bash
-cp .env.example .env
-docker compose up -d --build
-```
+- inspección y preparación reproducible de datasets;
+- pruebas diagnósticas pequeñas;
+- auditorías de orientación, scores y preprocessing;
+- validación de los runtimes reales de GMIC, NYU y GLAM;
+- división formal Configuration Set / Final Test;
+- inferencia resumible por chunks;
+- evaluación de combinaciones de pesos y thresholds;
+- freeze de la configuración seleccionada;
+- evaluación final sobre el Final Test reservado.
 
-> Use `-d` para dejar la plataforma ejecutándose en segundo plano. Si se usa `docker compose up --build` sin `-d` y se interrumpe con `Ctrl+C`, los servicios dejan de estar disponibles para los comandos posteriores.
+## 1.3 Lo que el sistema no hace
 
-Estado:
+El prototipo:
 
-```bash
-docker compose ps -a
-./scripts/status.sh
-```
+- **no entrena** GMIC, NYU ni GLAM;
+- no hace fine-tuning, LoRA ni nuevas classifier heads;
+- no usa LLM ni RAG para producir scores;
+- no usa APIs externas de IA para inferencia;
+- no genera predicciones simuladas cuando un modelo falla;
+- no usa MinIO ni PostgreSQL dentro del cálculo matemático del ensemble;
+- no permite que la configuración Web modifique la configuración experimental Batch.
 
-Validación específica del Model Runner:
+## 1.4 Entrada mamográfica canónica
 
-```bash
-curl http://localhost:8010/doctor
-curl http://localhost:8010/health
-```
+El ensemble requiere cuatro proyecciones estándar por estudio:
 
-`/doctor` siempre intenta devolver el diagnóstico de la frontera Docker: existencia del socket, ping directo, `docker version` y `docker info`. `/health` solo devuelve 200 cuando el Runner puede utilizar realmente el Docker Engine del host.
+- `L_CC`
+- `R_CC`
+- `L_MLO`
+- `R_MLO`
 
-Servicios:
+En datasets preparados, estas vistas se registran en el manifest canónico. En Web, se obtienen a partir de metadata DICOM y, cuando la proyección no puede resolverse automáticamente, la interfaz permite una asignación manual supervisada.
 
-- Streamlit: http://localhost:8501
-- FastAPI: http://localhost:8000/docs
-- Model Runner: http://localhost:8010/docs
-- MinIO: http://localhost:9001
+## 1.5 Datasets soportados
 
-## 2.0.1 Evaluación Web unitaria — DICOM + ensemble configurable + PostgreSQL + MinIO
+El catálogo actual incluye:
 
-La interfaz Streamlit implementa una ruta de **inferencia unitaria** para un estudio mamográfico. La entrada está limitada a archivos DICOM y no incorpora `train.csv`, la variable `cancer` ni otra etiqueta diagnóstica al proceso de evaluación. El ensemble requiere las proyecciones L-CC, R-CC, L-MLO y R-MLO.
-
-La identificación de la proyección prioriza `ViewCodeSequence (0054,0220)` y `ViewPosition`. Cuando esos atributos no están disponibles, se consultan de forma conservadora campos descriptivos de adquisición como `SeriesDescription`, `ProtocolName`, `RequestedProcedureDescription`, `StudyDescription`, `ImageType` y secuencias de procedimiento. La lateralidad continúa obteniéndose de `ImageLaterality`/`Laterality`.
-
-Si la metadata no permite resolver CC/MLO, Streamlit presenta una vista previa del DICOM y solicita únicamente la proyección cuando la lateralidad ya fue determinada. La vista previa es una representación de presentación y no se utiliza como entrada del modelo. La representación inferencial continúa generándose con el conversor canónico DICOM a PNG monocromático de 16 bits utilizado por los adapters del proyecto.
-
-La ruta Web reutiliza la política de orientación, `_infer_three`, Model Runner y `ensemble.soft_voting.vote`. PostgreSQL registra los resultados estructurados de la ejecución y MinIO conserva DICOM originales, representaciones canónicas y artefactos de auditoría. MinIO no participa en el cálculo de la predicción; una incidencia de persistencia no modifica un resultado inferencial ya completado.
-
-A partir de v0.31.0, la interfaz permite conservar los pesos base de `config/ensemble.yaml` o definir GMIC/NYU/GLAM para una evaluación Web individual. La suma debe ser 1.0. El override viaja en la petición del caso, queda registrado en el resultado y **no escribe** `config/ensemble.yaml` ni `config/experiments.yaml`; por tanto, no altera las combinaciones W01-W16 ni el flujo batch. Hasta v0.33.0, el umbral de decisión permanecía de solo lectura y procedía de la configuración base. A partir de v0.34.0, el tab **Configuración y estado** permite conservar ese umbral base o definir un `decision_threshold` temporal para la evaluación Web; el valor no se escribe en YAML ni se reutiliza por los entrypoints batch.
-
-A partir de v0.32.1, la configuración operativa de la Web se concentra en el tab **Configuración y estado**. Allí se selecciona el dispositivo de inferencia Web (`CPU` o `GPU`) y los pesos del ensemble. El valor inicial del dispositivo procede de `WEB_INFERENCE_DEVICE` y por defecto es `cpu`. La selección viaja exclusivamente en `/single-cases/run` como `inference_device`; no modifica `GMIC_DEVICE`, `NYU_DEVICE`, `GLAM_DEVICE`, `config/models.yaml` ni los entrypoints batch. En modo CPU no se exige `gpu_probe`. En modo GPU se conserva el preflight ya existente y puede validarse con `docker compose exec fastapi python -m model_tools.validate_gpu --models all`.
-
-A partir de v0.32.2, el progreso Web utiliza tiempos de pared (`time.monotonic`) observados por FastAPI para cada etapa y cada llamada a modelo. Se distingue explícitamente la preparación del estudio, normalización de orientación, preparación de entradas del Model Runner, GMIC, NYU/DMV-CNN, GLAM, integración del ensemble y persistencia. Las métricas internas devueltas por cada runtime continúan guardándose como diagnóstico técnico, pero ya no se muestran como tiempo de ejecución Web. El botón de evaluación queda bloqueado mientras exista una solicitud en curso para evitar ejecuciones duplicadas.
-
-A partir de v0.33.0, la ruta Web deja de persistir artefactos del caso en el `workspace` del proyecto. Streamlit, FastAPI y Model Runner comparten el volumen Docker `web_scratch` montado en `/web-scratch`, utilizado únicamente como espacio temporal para uploads, previews, PNG canónicos, `data.pkl`, preprocesados y outputs intermedios. Al finalizar una evaluación, el directorio temporal del run y los DICOM staged se eliminan. La persistencia durable del caso queda limitada a PostgreSQL (registro estructurado, scores, configuración y tiempos) y MinIO (`runs/<run_id>/`). El `workspace` persistente conserva su responsabilidad histórica para batch, datasets, modelos, resume y experimentos; los caches/registries globales del runtime de modelos siguen siendo infraestructura compartida y no se consideran artefactos del caso Web.
-
-Los artefactos MinIO de una evaluación se almacenan en el bucket `mammography-web` (configurable mediante `MINIO_WEB_BUCKET`) bajo el prefijo `runs/<run_id>/`. La consola se publica por defecto en `http://localhost:9001`; la URL mostrada por Streamlit puede configurarse mediante `MINIO_CONSOLE_PUBLIC_URL`. Las credenciales se toman de `MINIO_ROOT_USER` y `MINIO_ROOT_PASSWORD` del `.env`. Dentro de cada prefijo se conservan `input/`, `canonical/`, `audit/`, `result/` y `manifest/` cuando los artefactos correspondientes existen.
-
-La implementación permanece separada de los entrypoints y configuraciones del flujo experimental masivo. Los componentes batch validados en v0.30.2 no se modifican en su comportamiento de inferencia, selección, freeze, Final Test o resume. Ver `docs/MIGRATION_V0_30_2_WEB_MINIO.md`.
-
-
-
-## 2.1 Catálogo operativo de comandos Docker / Docker Compose
-
-Esta sección centraliza los comandos usados durante la validación del prototipo. Antes de ejecutar un comando de dataset, revise **Qué modifica**: `raw/` contiene la copia autorizada original; `processed/` contiene derivados reproducibles; `manifests/` contiene índices/labels; `output/` contiene resultados de pruebas.
-
-| Comando | Para qué sirve | Qué modifica | Qué esperar |
+| Dataset | Clave | Adquisición | Uso principal |
 |---|---|---|---|
-| `docker compose up -d --build` | Construye/levanta la plataforma. | Imágenes de servicios y volúmenes de infraestructura; no descarga datasets. | Servicios `Up`/`healthy`. |
-| `docker compose up -d --force-recreate model-runner fastapi` | Recrea servicios para releer `.env`/código. | Contenedores, no datasets ni resultados. | Runner y FastAPI vuelven `healthy`. |
-| `docker compose build --no-cache model-runner fastapi bootstrap streamlit` | Reconstruye servicios de aplicación desde cero. | Imágenes Docker de aplicación; no toca `workspace/`. | Builds exitosos. |
-| `docker compose down --remove-orphans` | Detiene la plataforma y elimina contenedores huérfanos. | Contenedores; conserva bind mount `workspace/` y volúmenes nombrados salvo que se añada `-v`. | Servicios detenidos. |
-| `docker compose ps -a` | Muestra estado/health de servicios. | Nada. | `healthy` en dependencias persistentes. |
-| `docker compose logs -f` | Sigue logs de todos los servicios. | Nada. | Logs en vivo. Los `/health` 200 repetidos se suprimen desde v0.16. |
-| `docker compose logs -f model-runner` | Sigue el ciclo de inferencia del Model Runner: espera/adquisición GPU, inicio de contenedor temporal, inicio/fin de comando, éxito/fallo y métricas resumidas. | Nada. | Eventos de inferencia visibles sin spam de healthchecks. |
-| `./scripts/logs.sh` | Wrapper para seguir en vivo los logs de `fastapi` y `model-runner` con un tail inicial configurable (`TAIL_LINES=200 ./scripts/logs.sh`). | Nada. | Logs operativos de servicios; eventos CLI persisten además en `workspace/logs/*.jsonl`. |
-| `tail -f workspace/logs/audit.jsonl workspace/logs/model_runner.jsonl` | Sigue la auditoría persistente de CLI/pipeline y Runner desde el host. | Nada. | Eventos JSONL incluso cuando el comando se ejecutó mediante `docker compose exec`. |
-| `docker compose exec fastapi cat /app/VERSION` | Verifica versión del código dentro de FastAPI. | Nada. | `0.35.0`. |
-| `docker compose exec model-runner cat /runner/VERSION` | Verifica versión del Model Runner. | Nada. | `0.35.0`. |
-| `docker compose exec model-runner docker version` | Verifica cliente/daemon Docker desde el Runner. | Nada. | Client/Server accesibles. |
-| `docker compose exec model-runner docker info` | Diagnóstico detallado del daemon desde el Runner. | Nada. | Información del Engine sin error. |
-| `docker compose exec fastapi python -m model_tools.status` | Estado de imágenes, perfiles GPU y device por modelo. | Nada. | GMIC/NYU/GLAM `device=gpu` en workstation validada. |
-| `docker compose exec fastapi python -m model_tools.ensure --models gmic nyu glam` | Construye/reutiliza imágenes legacy `:research`. | Imágenes Docker; no cambia pesos/arquitectura. | `READY`. |
-| `docker compose exec fastapi python -m model_tools.ensure_gpu --models gmic nyu glam` | Construye/reutiliza runtimes Blackwell para uno o más modelos. Revisiones actuales: GMIC=3, NYU=1, GLAM=2. Puede usarse con un subconjunto. | Imágenes GPU seleccionadas; invalida el probe de un modelo solo si ese runtime se reconstruye. | `READY` por modelo y `rebuild_performed` explícito. |
-| `docker compose exec fastapi python -m model_tools.gpu_probe --models gmic nyu glam` | Prueba asignación y kernel CUDA de uno o más runtimes GPU seleccionados. | Actualiza evidencia `workspace/models/gpu_compatibility/<model>.probe.json`; no toca datasets. | `GPU_READY` por modelo. |
-| `docker compose exec fastapi python -m model_tools.smoke_test --models gmic nyu glam` | Prueba los modelos con sample data upstream. | `workspace/output/smoke_tests/`; no toca datasets raw. | `SUCCESS` por inferencia completada. |
-| `docker compose exec fastapi python -m model_tools.validate_gpu --models all` | Orquestación de release/validación: asegura la revisión GPU configurada de GMIC+NYU+GLAM, ejecuta `gpu_probe` de todos y luego smoke test de todos. También acepta uno o más modelos (`--models gmic nyu`). | Puede reconstruir solo las imágenes cuyo `build_revision` cambió; renueva sus probes y escribe evidencia JSON en `workspace/output/model_validation/`; no modifica datasets. | `overall_status=READY` y `PASS` en `ensure_gpu`, `gpu_probe` y `smoke_test` por modelo. |
-| `docker compose exec fastapi python -m model_tools.validate_gpu --models all --force-rebuild` | Igual que el anterior, pero fuerza reconstrucción de todas las imágenes GPU seleccionadas aunque su revisión ya coincida. Úselo solo cuando se quiera validar bytes nuevos explícitamente. | Rebuild de imágenes seleccionadas, invalida/renueva probes y escribe reporte; no toca datasets. | `rebuild_performed=true` por modelo y validación completa. |
-| `./scripts/validate-models.sh all` o `./scripts/validate-models.sh gmic nyu` | Wrapper host del comando integrado anterior; evita escribir el `docker compose exec ...` completo y acepta uno o más modelos. | Los mismos efectos de `model_tools.validate_gpu`; no modifica datasets. | Mismo JSON/resumen de validación. |
-| `docker compose exec fastapi python -m dataset_pipeline.status` | Consulta estado de datasets. | Nada. | `AVAILABLE`, `READY_FOR_INSPECT`, etc. |
-| `docker compose exec fastapi python -m dataset_pipeline.download --datasets cbis_ddsm` | Solo escribe/actualiza instrucciones y valida archivos ya presentes. **No descarga DICOM ni CSV**. | Puede escribir `DOWNLOAD_INSTRUCTIONS.md`; no modifica raw. | Estado manual (`READY_FOR_INSPECT`, `METADATA_REQUIRED`, `DICOM_DOWNLOAD_REQUIRED`, etc.). |
-| `docker compose exec fastapi python -m dataset_pipeline.inspect --datasets cmmd --force-dicom-index` | Audita CMMD DICOM + XLSX clínico manual, resuelve CC/MLO desde `ViewCodeSequence`, separa four-view y construye el subconjunto binario CMMD1/D1. | Escribe índices/manifests/rejected; no modifica raw. | Conteos DICOM, cohortes, four-view y benchmark D1. |
-| `docker compose exec fastapi python -m dataset_pipeline.prepare --datasets cmmd` | Convierte solo el subconjunto CMMD1/D1 four-view con labels bilaterales explícitos a PNG 16-bit. | `processed/cmmd/images/` + `manifests/cmmd.csv`; no modifica DICOM/XLSX raw. | `AVAILABLE` y `converted_studies=...`. |
-| `docker compose exec fastapi python -m tests_flow.normal --datasets cmmd --samples 10 --sampling balanced --seed 42 --max-runtime-minutes 30` | Prueba diagnóstica balanceada sobre el subconjunto CMMD1/D1 preparado. | Solo outputs/logs. | 5 benignos/5 malignos si hay al menos cinco de cada clase. |
-| `./scripts/audit-dicom-presentation.sh /workspace/output/normal_tests/<RUN>` | Contrafactual DICOM label-blind sobre los mismos estudios ya diagnosticados: compara conversión actual vs Modality LUT/rescale vs VOI/Window. No ejecuta clasificadores. | Solo `workspace/output/analyses/dicom-presentation-.../`; no modifica raw ni prepared. | Reporte Markdown + JSON/CSV de diferencias; no selecciona una rama por AUC. |
-| `docker compose exec fastapi python -m dataset_pipeline.inspect --datasets cbis_ddsm` | Cruza metadata, reutiliza índice DICOM y construye catálogos/manifiesto de estudios completos. | `manifests/`, `rejected/`, `source_manifest.csv`, cache de índice; no modifica pixels raw. | Conteos de pacientes/vistas y `ensemble_compatible`. |
-| `docker compose exec fastapi python -m dataset_pipeline.inspect --datasets cbis_ddsm --force-dicom-index` | Igual que `inspect`, pero reconstruye headers DICOM. | Reescribe cache del índice; no modifica DICOM. | Mucho más lento; usar solo si cambió el árbol raw. |
-| `docker compose exec fastapi python -m dataset_pipeline.prepare --datasets cbis_ddsm` | Convierte **solo estudios de 4 vistas compatibles** a PNG 16-bit y escribe manifiesto canónico. | Escribe/regenera `processed/cbis_ddsm/images/*.png` y `manifests/cbis_ddsm.csv`; **no limpia, borra ni modifica DICOM raw**. No elimina derivados antiguos no referenciados. | `AVAILABLE`, `converted_studies=...`. |
-| `docker compose exec fastapi python -m tests_flow.normal --datasets cbis_ddsm --samples 10 --sampling stratified --seed 42 --max-runtime-minutes 30` | Prueba end-to-end con sampling proporcional reproducible. En el CBIS-DDSM preparado actual (72 benignos/33 malignos), 10 seleccionan objetivo 7/3. | Solo `workspace/output/normal_tests/<run>/` y logs; no modifica dataset preparado. | `selected_studies.csv`, `run_summary.json`, `NORMAL_TEST_COMPLETED` y predicciones/métricas. |
-| `docker compose exec fastapi python -m tests_flow.normal --datasets cbis_ddsm --samples 10 --sampling balanced --seed 42 --max-runtime-minutes 30` | Prueba de integración balanceada que fuerza cuotas iguales por clase cuando hay disponibilidad; útil para ejercitar TN/FP/FN/TP. | Solo outputs/logs de la nueva corrida; no limpia ni reconvierte datasets. | Para 10 estudios, objetivo 5 benignos/5 malignos y métricas calculables si todos completan. |
-| `docker compose exec fastapi python -m experiments.score_analysis --input /workspace/output/normal_tests/<RUN>/raw_model_predictions.csv` | Analiza scores ya calculados sin ejecutar GMIC/NYU/GLAM otra vez: ROC-AUC por modelo, distribuciones, correlaciones, puntos ROC, métricas baseline (Sensitivity/Specificity/PPV/NPV/FPR/Balanced Accuracy) y preview de thresholds adaptativos. | Solo crea `workspace/output/analyses/score-analysis-.../`; no modifica datasets, modelos ni el run de origen. | `score_summary.json`, `model_metrics.csv`, `candidate_thresholds.csv`, `diagnostic_configurations.csv`, `diagnostic_ranking.csv`, `score_analysis_report.md`. |
-| `./scripts/analyze-scores.sh /workspace/output/normal_tests/<RUN>/raw_model_predictions.csv` | Wrapper host del análisis anterior. | Mismos outputs CPU-only; no usa GPU. | Ruta del directorio de análisis. |
-| `docker compose exec fastapi python -m experiments.run --datasets rsna --configuration-ratio 0.30 --seed 42` | Fase formal de configuración. v0.30.2 conserva la exclusión/split de v0.30.1 y ejecuta orientación e inferencia por chunks reanudables; excluye primero el Diagnostic Set RSNA ya observado, divide por paciente y de forma estratificada el 100% del pool formal restante, ejecuta modelos solo sobre Configuration Set y evalúa 16 pesos × 5 thresholds (=80). AUPRC/F1 se reportan sin cambiar post hoc la política de selección. El Final Test queda reservado sin scores. | `workspace/output/experiments/`; no modifica datasets. | `formal_pool_manifest.csv`, exclusiones, `split_summary.json`, manifests config/final, score analysis, 80 configuraciones, ranking y best configuration. |
-| `docker compose exec fastapi python -m experiments.freeze --experiment <ID>` | Congela pesos/threshold seleccionados. | Crea `frozen_configuration.yaml`; no se sobreescribe con contenido distinto. | Configuración frozen. |
-| `docker compose exec fastapi python -m experiments.final_evaluation --experiment <ID>` | Evalúa el Final Test reservado después del freeze. Verifica hash del manifest y ausencia de pacientes diagnósticos excluidos. | Resultados finales; no reoptimiza. | Métricas selected vs baseline, AUPRC/F1 y `final_model_comparison.csv` con modelos individuales. |
-| `docker run --rm --gpus all nvidia/cudagl:10.1-devel-ubuntu18.04 nvidia-smi` | Diagnóstico de exposición GPU a Docker/WSL. | Nada persistente. | RTX visible dentro del contenedor. |
+| RSNA Screening Mammography Breast Cancer Detection | `rsna` | Manual | Dataset principal del experimento formal actual |
+| CBIS-DDSM | `cbis_ddsm` | Manual TCIA | Validación/adaptación histórica |
+| CMMD | `cmmd` | Manual TCIA | Validación de adapter y dominio adicional |
+| VinDr-Mammo | `vindr` | Manual PhysioNet | Declarado en catálogo; requiere adquisición autorizada |
 
-### Semántica exacta de `dataset_pipeline.prepare`
+Docker no descarga estos datasets automáticamente al levantar la plataforma.
 
-`prepare` **no limpia el dataset original**. Para CBIS-DDSM: (1) ejecuta/reutiliza `inspect`; (2) lee `source_manifest.csv`; (3) abre únicamente los DICOM seleccionados para los estudios completos de cuatro vistas; (4) aplica la conversión DICOM→PNG 16-bit requerida por el metarepositorio NYU, incluyendo `MONOCHROME1` cuando corresponda; (5) escribe los PNG derivados en `workspace/datasets/processed/cbis_ddsm/images/`; y (6) reescribe el manifiesto canónico `workspace/datasets/manifests/cbis_ddsm.csv`. Los DICOM de `raw/` permanecen byte-a-byte intactos. Ejecutar `prepare` de nuevo regenera los destinos seleccionados, pero no borra archivos raw ni realiza una limpieza global de `processed/`.
+---
 
-## Corrección v0.4 para Docker Desktop / WSL2
+# 2. Diagrama de arquitectura
 
-La arquitectura sigue siendo **un Model Runner + tres imágenes aisladas de modelos**. v0.4 corrige únicamente la comunicación del Runner con Docker Desktop/Engine.
+```mermaid
+flowchart TB
+    U[Usuario / Investigador]
 
-La versión anterior instalaba `docker.io` desde Debian dentro del Runner. v0.4 usa por defecto la imagen oficial:
+    subgraph WEB[Canal Web]
+        ST[Streamlit :8501]
+        API[FastAPI :8000]
+        LG[LangGraph determinístico]
+        WS[(web_scratch\nvolumen temporal)]
+    end
 
-```env
-DOCKER_CLI_IMAGE=docker:29-cli
+    subgraph BATCH[Canal Batch / Tesis]
+        CLI[CLI Python + scripts shell]
+        PIPE[Pipeline experimental]
+        DATA[Dataset adapters]
+    end
+
+    subgraph CORE[Núcleo inferencial]
+        ORI[Política de orientación]
+        MR[Model Runner :8010]
+        DV[Docker Engine\n/var/run/docker.sock]
+        GMIC[Contenedor temporal GMIC]
+        NYU[Contenedor temporal NYU / DMV-CNN]
+        GLAM[Contenedor temporal GLAM]
+        ENS[Weighted Soft Voting]
+    end
+
+    subgraph STORAGE[Persistencia]
+        PG[(PostgreSQL)]
+        MINIO[(MinIO :9000 / consola :9001)]
+        WORK[(workspace\nBatch persistente)]
+        LOGS[(logs / reportes / métricas)]
+    end
+
+    U --> ST
+    U --> CLI
+
+    ST --> API
+    API --> LG
+    LG --> WS
+    LG --> ORI
+
+    CLI --> PIPE
+    PIPE --> DATA
+    DATA --> WORK
+    PIPE --> ORI
+
+    ORI --> MR
+    MR --> DV
+    DV --> GMIC
+    DV --> NYU
+    DV --> GLAM
+    GMIC --> MR
+    NYU --> MR
+    GLAM --> MR
+    MR --> ENS
+
+    ENS --> API
+    ENS --> PIPE
+
+    API --> PG
+    API --> MINIO
+    API --> WS
+    PIPE --> WORK
+    PIPE --> LOGS
+
+    WS -. limpieza al finalizar .-> WS
 ```
 
-y hace explícito:
+---
+
+# 3. Explicación de la arquitectura
+
+## 3.1 Streamlit
+
+`ui/streamlit_app.py` implementa la interfaz Web. Sus responsabilidades principales son:
+
+- carga de DICOM;
+- staging temporal de archivos;
+- consulta del estado de modelos y persistencia;
+- configuración Web de CPU/GPU, pesos y threshold;
+- persistencia explícita de la configuración Web mediante el botón **Actualizar configuración**;
+- inspección automática de lateralidad/proyección;
+- resolución manual cuando CC/MLO no puede identificarse;
+- ejecución del caso;
+- polling del progreso;
+- visualización de scores, tiempos, orientación y artefactos.
+
+Streamlit no llama directamente a los modelos. Toda inferencia se envía a FastAPI.
+
+## 3.2 FastAPI
+
+`mammography_agent/api.py` es el backend de aplicación. Expone:
+
+- health y estado del workspace;
+- operaciones sobre datasets;
+- inspección y previews de casos DICOM;
+- ejecución Web unitaria;
+- progreso por `run_id`;
+- configuración del ensemble Web;
+- lectura/escritura de configuración Web persistida;
+- estado de PostgreSQL/MinIO.
+
+La ruta `/single-cases/run` usa LangGraph como máquina de estados determinística y delega la inferencia real a `mammography_agent.single_case.run_single_case()`.
+
+## 3.3 LangGraph
+
+`mammography_agent/graph.py` define un grafo mínimo:
+
+1. valida la solicitud;
+2. ejecuta el handler inferencial;
+3. devuelve el resultado.
+
+LangGraph **no decide clínicamente**, no genera texto y no sustituye los modelos. Se utiliza únicamente para orquestar de forma explícita el estado de la solicitud Web.
+
+## 3.4 Pipeline Batch
+
+`mammography_agent/pipeline.py` contiene el flujo principal de tesis:
+
+- carga de manifests;
+- sampling diagnóstico;
+- resolución de orientación;
+- ejecución de los tres modelos;
+- normal test;
+- exclusiones formales;
+- split Configuration / Final Test;
+- inferencia por chunks resumibles;
+- evaluación de configuraciones;
+- freeze;
+- evaluación final.
+
+El Batch se ejecuta dentro del contenedor `fastapi` mediante `docker compose exec fastapi python -m ...`; no entra por la API HTTP de la ruta Web.
+
+## 3.5 Model Runner
+
+`model_runner/api.py` es una frontera técnica entre la aplicación y los runtimes ML. El Model Runner:
+
+- no contiene PyTorch/TensorFlow/CUDA;
+- accede al Docker Engine mediante `/var/run/docker.sock`;
+- prepara o reutiliza imágenes de modelo;
+- crea contenedores temporales de inferencia;
+- monta inputs/outputs;
+- aplica el dispositivo solicitado;
+- registra métricas de recursos;
+- serializa uso de GPU mediante lock compartido;
+- elimina el contenedor temporal después de la ejecución.
+
+La separación evita mezclar dependencias incompatibles de GMIC, NYU y GLAM en un único entorno Python.
+
+## 3.6 Runtimes de modelos
+
+Las imágenes de inferencia son independientes:
+
+- `mammography-model-gmic:research` o runtime GPU compatible;
+- `mammography-model-nyu:research` o runtime GPU compatible;
+- `mammography-model-glam:research` o runtime GPU compatible.
+
+Para NVIDIA Blackwell, los Dockerfiles de `docker/model-compat/` usan PyTorch 2.7.1 + CUDA 12.8 y aplican únicamente parches de compatibilidad explícitos. Los commits upstream, checkpoints y arquitectura de los modelos permanecen congelados.
+
+## 3.7 Ensemble
+
+`mammography_agent/ensemble/soft_voting.py` recibe los tres scores canónicos y calcula:
+
+- score ponderado;
+- clasificación según threshold;
+- rango entre modelos;
+- desviación estándar;
+- indicador de discordancia.
+
+La configuración base reside en `config/ensemble.yaml`.
+
+## 3.8 Persistencia Web
+
+La ruta Web separa tres tipos de almacenamiento:
+
+- **PostgreSQL:** resultados estructurados, configuración aplicada y configuración Web persistida.
+- **MinIO:** DICOM originales, PNG canónicos y artefactos compactos del run.
+- **web_scratch:** staging y archivos intermedios temporales; se eliminan al terminar.
+
+El `workspace` del proyecto queda reservado para Batch, datasets, modelos, experimentos y auditoría Batch.
+
+## 3.9 Persistencia Batch
+
+El Batch usa `HOST_WORKSPACE`, por defecto `./workspace`, montado como `/workspace`. Allí quedan:
+
+- datasets raw y preparados;
+- manifests;
+- caches de runtime;
+- outputs de normal tests;
+- análisis;
+- experimentos;
+- Final Test;
+- logs y reportes.
+
+## 3.10 Servicios y puertos
+
+| Servicio | Puerto host | Función |
+|---|---:|---|
+| Streamlit | `8501` | Interfaz Web |
+| FastAPI | `8000` | Backend de aplicación |
+| Model Runner | `8010` | Controlador de runtimes de modelos |
+| MinIO API | `9000` | Object storage |
+| MinIO Console | `9001` | Navegación de artefactos |
+| PostgreSQL | interno Compose | Persistencia estructurada |
+| Redis | interno Compose | Servicio auxiliar; no participa en el score del ensemble |
+
+---
+
+# 4. Estructura del proyecto
+
+La siguiente representación es un árbol de archivos, no un diagrama de arquitectura.
 
 ```text
-DOCKER_HOST=unix:///var/run/docker.sock
+.
+├── .env.example
+├── VERSION
+├── README.md
+├── VERIFICATION.md
+├── docker-compose.yml
+├── pyproject.toml
+├── requirements.txt
+│
+├── config/
+│   ├── application.yaml
+│   ├── config_additions.yaml
+│   ├── datasets.yaml
+│   ├── ensemble.yaml
+│   ├── experiments.yaml
+│   └── models.yaml
+│
+├── mammography_agent/
+│   ├── api.py
+│   ├── graph.py
+│   ├── domain.py
+│   ├── pipeline.py
+│   ├── single_case.py
+│   ├── model_client.py
+│   ├── orientation_policy.py
+│   ├── prediction_parser.py
+│   ├── score_analysis.py
+│   ├── score_provenance.py
+│   ├── storage.py
+│   ├── object_storage.py
+│   ├── reporting.py
+│   ├── workspace.py
+│   ├── datasets/
+│   └── ensemble/
+│
+├── model_runner/
+│   ├── api.py
+│   └── health_logging.py
+│
+├── dataset_pipeline/
+│   ├── status.py
+│   ├── download.py
+│   ├── inspect.py
+│   └── prepare.py
+│
+├── model_tools/
+│   ├── status.py
+│   ├── ensure.py
+│   ├── ensure_gpu.py
+│   ├── gpu_probe.py
+│   ├── smoke_test.py
+│   └── validate_gpu.py
+│
+├── experiments/
+│   ├── run.py
+│   ├── freeze.py
+│   ├── final_evaluation.py
+│   ├── score_analysis.py
+│   ├── score_provenance.py
+│   ├── orientation_preflight.py
+│   ├── orientation_counterfactual.py
+│   ├── input_fidelity.py
+│   ├── input_scale_comparison.py
+│   ├── dicom_presentation_counterfactual.py
+│   ├── upstream_reference_validation.py
+│   ├── glam_runtime_differential.py
+│   └── breast_ensemble_analysis.py
+│
+├── tests_flow/
+│   └── normal.py
+│
+├── ui/
+│   └── streamlit_app.py
+│
+├── scripts/
+│   └── *.sh
+│
+├── docker/
+│   ├── app.Dockerfile
+│   ├── model-runner.Dockerfile
+│   └── model-compat/
+│       ├── gmic-blackwell.Dockerfile
+│       ├── nyu-blackwell.Dockerfile
+│       └── glam-blackwell.Dockerfile
+│
+├── docs/
+└── tests/
 ```
 
-Si vienes de v0.3, conserva `workspace/` y los volúmenes y ejecuta:
+## 4.1 Workspace persistente Batch
 
-```bash
-docker compose down --remove-orphans
-docker compose build --no-cache model-runner
-docker compose up -d
-```
-
-Después verifica:
-
-```bash
-docker compose ps -a
-curl http://localhost:8010/doctor
-curl http://localhost:8010/health
-```
-
-Para diagnosticar desde dentro del servicio usa el nombre de servicio de Compose, no un nombre de contenedor escrito manualmente:
-
-```bash
-docker compose exec model-runner docker version
-docker compose exec model-runner docker info
-```
-
-También puedes ejecutar:
-
-```bash
-./scripts/doctor.sh
-```
-
-Ver `docs/MIGRATION_V0_4.md`.
-
-## Corrección v0.5 para imágenes CUDA legacy
-
-El `ensure` real de GMIC confirmó que el Dockerfile upstream usa la referencia histórica:
-
-```text
-nvidia/cuda:10.1-base-ubuntu18.04
-```
-
-y el entorno actual ya no puede resolver ese tag. Los Dockerfiles upstream de GMIC, DMV-CNN/NYU y GLAM comparten esa misma base. v0.5 genera, para cada modelo, un Dockerfile de compatibilidad que reemplaza **solo** esa línea por:
-
-```text
-nvidia/cudagl:10.1-devel-ubuntu18.04
-```
-
-El Dockerfile generado queda bajo `.thesis_compat/` dentro de la copia local del metarepositorio. Se registran SHA-256 del Dockerfile original y generado, imagen original/reemplazo, motivo y las garantías:
-
-```text
-model_code_changed=false
-model_weights_changed=false
-training_performed=false
-```
-
-Además, v0.5 registra automáticamente el metarepositorio host-mounted como `git safe.directory` cuando sea necesario, evitando el workaround manual observado en WSL2.
-
-Para migrar desde v0.4 conserva `.env` y `workspace/`:
-
-```bash
-docker compose down --remove-orphans
-docker compose build --no-cache model-runner fastapi
-docker compose up -d
-```
-
-Luego prueba solo GMIC:
-
-```bash
-docker compose exec fastapi \
-  python -m model_tools.ensure \
-  --models gmic
-```
-
-Si el build vuelve a fallar, el CLI ahora muestra el detalle devuelto por el Model Runner y el evento completo sigue disponible en `workspace/logs/model_runner.jsonl`.
-
-Ver `docs/MIGRATION_V0_5.md`.
-
-
-## Corrección v0.6 para rotación de claves NVIDIA legacy
-
-Con v0.5 el build real de GMIC avanzó hasta `apt-get update`, donde el repositorio CUDA de Ubuntu 18.04 falló con:
-
-```text
-NO_PUBKEY A4B469963BF863CC
-```
-
-v0.6 mantiene la sustitución de imagen base de v0.5 y añade `nvidia_repository_key_rotation_fix: auto`. Si el Dockerfile upstream ya contiene el refresh de clave NVIDIA, se conserva. Si no lo contiene, el Model Runner lo inserta antes del `apt-get update`. Esto permite que GMIC/GLAM utilicen el mismo tipo de workaround que el Dockerfile upstream actual de DMV-CNN/NYU ya incorpora.
-
-La corrección es exclusivamente del entorno de construcción:
-
-```text
-model_code_changed=false
-model_weights_changed=false
-training_performed=false
-```
-
-La evidencia queda en `workspace/logs/model_runner.jsonl` y `workspace/models/compatibility/<model>.json`.
-
-Para migrar desde v0.5 conserva `.env` y `workspace/`:
-
-```bash
-docker compose down --remove-orphans
-docker compose build --no-cache model-runner fastapi
-docker compose up -d
-```
-
-Luego vuelve a probar únicamente GMIC:
-
-```bash
-docker compose exec fastapi \
-  python -m model_tools.ensure \
-  --models gmic
-```
-
-Ver `docs/MIGRATION_V0_6.md`.
-
-## Migración desde v0.2
-
-La arquitectura introducida en v0.3 (y mantenida en v0.4/v0.5/v0.6) simplifica los tres controladores `gmic-runtime`, `nyu-runtime` y `glam-runtime` a **un único `model-runner`**. Las imágenes de los modelos siguen separadas.
-
-Si v0.2 está ejecutándose:
-
-```bash
-docker compose down --remove-orphans
-```
-
-No uses `-v` si deseas conservar PostgreSQL/MinIO. Conserva también tu `workspace/`. Sustituye los archivos del proyecto, revisa `.env` y elimina si existieran:
-
-```text
-GMIC_RUNTIME_URL
-NYU_RUNTIME_URL
-GLAM_RUNTIME_URL
-```
-
-La nueva variable es:
-
-```env
-MODEL_RUNNER_URL=http://model-runner:8010
-```
-
-Luego:
-
-```bash
-docker compose up -d --build
-docker compose ps
-```
-
-Debes ver `mammography-model-runner` como único controlador persistente de modelos. Ver `docs/MIGRATION_V0_3.md`.
-
-## 3. ¿Dónde están mis archivos?
-
-Por defecto:
-
-```text
-<directorio-del-proyecto>/workspace/
-```
-
-Dentro de los contenedores la misma carpeta aparece como:
-
-```text
-/workspace/
-```
-
-Linux:
-
-```bash
-pwd
-xdg-open ./workspace
-```
-
-Windows/PowerShell, desde la carpeta del proyecto:
-
-```powershell
-explorer .\workspace
-```
-
-Se puede cambiar en `.env`:
-
-```env
-HOST_WORKSPACE=./workspace
-```
-
-Mapa:
+Por defecto `HOST_WORKSPACE=./workspace`:
 
 ```text
 workspace/
@@ -405,829 +442,710 @@ workspace/
 │   ├── normal_tests/
 │   ├── experiments/
 │   ├── final_evaluations/
+│   ├── model_validation/
 │   ├── xai/
 │   └── reports/
 └── logs/
 ```
 
-## 4. Descarga de datasets: siempre explícita
+## 4.2 Scratch Web
 
-Consultar estado:
+La ruta Web usa el volumen Docker `web_scratch`, montado en `/web-scratch`. Los archivos del caso se eliminan al terminar, incluso cuando la evaluación falla.
 
-```bash
-docker compose exec fastapi python -m dataset_pipeline.status
+---
+
+# 5. Clases y módulos de código principales
+
+El proyecto es principalmente funcional; por ello esta sección documenta tanto las clases relevantes como los módulos que concentran la lógica de negocio.
+
+## 5.1 Clases de dominio
+
+| Clase | Archivo | Responsabilidad |
+|---|---|---|
+| `MammographyStudy` | `mammography_agent/domain.py` | Representa identidad del estudio, paciente, dataset y cuatro vistas canónicas. |
+| `ModelPrediction` | `mammography_agent/domain.py` | Representa la predicción canónica de un modelo. |
+| `EnsembleResult` | `mammography_agent/domain.py` | Resultado del voting: score combinado, threshold, clasificación, pesos y discordancia. |
+
+## 5.2 Estado del agente
+
+| Clase | Archivo | Responsabilidad |
+|---|---|---|
+| `AgentState` | `mammography_agent/graph.py` | Estado tipado que LangGraph utiliza para solicitud y resultado de la ruta Web. |
+
+`build_graph()` crea el grafo determinístico y `run_graph()` lo ejecuta con el handler real de inferencia.
+
+## 5.3 Requests de FastAPI
+
+| Clase | Archivo | Responsabilidad |
+|---|---|---|
+| `DatasetSelection` | `mammography_agent/api.py` | Lista de datasets para download/inspect/prepare. |
+| `WebDicomCaseRequest` | `mammography_agent/api.py` | Valida DICOM, asignaciones de vista, pesos, threshold, dispositivo y `run_id` Web. |
+| `WebEvaluationSettingsRequest` | `mammography_agent/api.py` | Valida la configuración Web persistible en PostgreSQL. |
+
+`WebDicomCaseRequest` exige al menos cuatro DICOM, máximo veinte, pesos dentro de `[0,1]` con suma `1.0`, threshold dentro de `[0,1]` y dispositivo `cpu|gpu`.
+
+## 5.4 Abstracción de datasets
+
+| Clase | Archivo | Responsabilidad |
+|---|---|---|
+| `DatasetAdapter` | `mammography_agent/datasets/base.py` | Contrato base para status, adquisición, inspección y preparación. |
+| `ManifestDatasetAdapter` | `mammography_agent/datasets/adapters.py` | Implementación base para datasets dirigidos por manifest. |
+| `VinDrDatasetAdapter` | `mammography_agent/datasets/adapters.py` | Adapter VinDr. |
+| `CBISDDSMDatasetAdapter` | `mammography_agent/datasets/cbis_ddsm.py` | Resolución TCIA/metadata, selección de vistas y preparación CBIS-DDSM. |
+| `CMMDDatasetAdapter` | `mammography_agent/datasets/cmmd.py` | Adapter CMMD con política CMMD1/D1 y labels bilaterales explícitos. |
+| `RSNADatasetAdapter` | `mammography_agent/datasets/rsna.py` | Adapter RSNA, selección determinística de vistas repetidas y generación de manifest canónico. |
+| `ResolvedImage` | `mammography_agent/datasets/cbis_ddsm.py` | Representa una imagen CBIS-DDSM resuelta a una vista canónica. |
+
+## 5.5 Pipeline experimental
+
+`mammography_agent/pipeline.py` es el módulo central del Batch. Sus funciones más importantes son:
+
+| Función | Responsabilidad |
+|---|---|
+| `normal_test()` | Prueba diagnóstica reproducible sobre N estudios. |
+| `_infer_three()` | Construye input y ejecuta GMIC → NYU → GLAM. |
+| `_infer_three_chunked()` | Ejecuta inferencia formal por chunks con checkpoint/hash/resume. |
+| `_resolve_orientation_chunked()` | Resuelve orientación formal por chunks resumibles. |
+| `_apply_formal_exclusions()` | Elimina estudios diagnósticos previamente observados antes del split. |
+| `_split_formal_pool()` | Divide por paciente, estratificado y sin overlap. |
+| `experimental_test()` | Abre Configuration Set, infiere, genera candidatos, ranking y `best_configuration`. |
+| `freeze_experiment()` | Congela pesos y threshold seleccionados. |
+| `final_evaluation()` | Infiere/evalúa el Final Test después del freeze. |
+
+## 5.6 Ruta Web unitaria
+
+`mammography_agent/single_case.py` concentra la lógica Web:
+
+- inspección de DICOM;
+- previews;
+- resolución de vista;
+- conversión DICOM→PNG canónico;
+- construcción del estudio de cuatro vistas;
+- resolución de configuración Web;
+- progreso por etapas;
+- ejecución de `_infer_three()` en modo label-blind;
+- soft voting;
+- persistencia;
+- cleanup del scratch.
+
+La ruta Web crea columnas de label con `NaN` solo como compatibilidad mecánica del contrato histórico del runner; no introduce ground truth real.
+
+## 5.7 Orientación
+
+`mammography_agent/orientation_policy.py` aplica `strict_four_view_gap_v1`. La decisión es label-blind y queda auditada en `orientation_resolution.csv` y `orientation_policy_summary.json`.
+
+## 5.8 Cliente del Model Runner
+
+`mammography_agent/model_client.py` encapsula llamadas HTTP al servicio `model-runner`:
+
+- status;
+- ensure de imagen;
+- ensure GPU;
+- GPU probe;
+- smoke test;
+- preprocess;
+- inferencia;
+- ejecución GLAM legacy CPU de referencia.
+
+## 5.9 Model Runner
+
+`model_runner/api.py` contiene los endpoints y la lógica para:
+
+- resolver especificación del modelo;
+- construir/reutilizar imágenes;
+- validar Docker;
+- gestionar perfiles GPU;
+- crear contenedores temporales;
+- capturar uso CPU/RAM/GPU/VRAM;
+- aplicar lock GPU;
+- devolver metadatos de ejecución.
+
+Las clases `RunRequest` y `PreprocessRequest` validan los contratos de ejecución del runner.
+
+## 5.10 Parsing y agregación de scores
+
+`mammography_agent/prediction_parser.py` adapta las salidas nativas:
+
+- GMIC y GLAM: score de imagen → score canónico de estudio;
+- NYU: scores de mama izquierda/derecha → score canónico de estudio.
+
+La semántica canónica está declarada en `config/models.yaml`.
+
+## 5.11 Ensemble y métricas
+
+- `ensemble/soft_voting.py`: combinación ponderada.
+- `ensemble/metrics.py`: TN, FP, FN, TP, sensibilidad, especificidad, PPV, NPV, F1, accuracy, balanced accuracy, ROC-AUC y AUPRC cuando aplica.
+- `ensemble/experiment.py`: genera configuraciones, ranking y selección.
+
+## 5.12 Score analysis y provenance
+
+- `score_analysis.py`: analiza scores existentes sin reinferencia.
+- `score_provenance.py`: reconstruye la procedencia de scores desde outputs nativos y verifica orden/semántica.
+- `input_fidelity.py`: compara inputs canónicos y preprocessing.
+- `input_scale_comparison.py`: compara escala del dataset con sample upstream.
+- `dicom_presentation_counterfactual.py`: compara ramas de presentación DICOM sin usar labels para escoger una transformación.
+- `orientation_counterfactual.py`: prueba cambios de orientación sobre estudios sospechosos.
+- `glam_runtime_differential.py`: compara GLAM legacy CPU con runtime Blackwell.
+- `upstream_reference_validation.py`: reproduce métricas publicadas del sample oficial del metarepositorio.
+
+## 5.13 Persistencia
+
+`mammography_agent/storage.py` gestiona PostgreSQL:
+
+- `research_runs`;
+- `web_inference_runs`;
+- `web_evaluation_settings`.
+
+`mammography_agent/object_storage.py` gestiona MinIO y crea el prefijo `runs/<run_id>/`.
+
+---
+
+# 6. Scripts operativos
+
+Esta sección documenta los scripts de operación. Los archivos de `tests/` basados en pytest no se describen aquí. `tests_flow/normal.py` sí se incluye porque, pese al nombre del directorio, es un **entrypoint operativo de prueba diagnóstica**, no un test unitario.
+
+## 6.1 Scripts shell de `scripts/`
+
+| Script | Función | GPU / inferencia | Salida principal |
+|---|---|---|---|
+| `bootstrap.sh` | Crea la estructura base de `workspace/`. | No | Directorios del workspace. |
+| `status.sh` | Muestra Compose, Model Runner, datasets y modelos. | No | Consola. |
+| `doctor.sh` | Diagnostica Docker socket, `/doctor`, `docker version` e `info`. | No | Consola. |
+| `gpu-doctor.sh` | Diagnostica NVIDIA en host/WSL, Toolkit/CDI y Docker GPU discovery. | No | `GPU_HOST_READY` o error. |
+| `setup-nvidia-container-toolkit-fedora-wsl.sh` | Instala/configura NVIDIA Container Toolkit en Fedora Remix WSL2. | No inferencia; modifica host. | Toolkit/CDI configurado. |
+| `validate-models.sh` | Ejecuta ensure GPU → probe CUDA → smoke test para modelos seleccionados. | Sí | JSON bajo `output/model_validation/`. |
+| `logs.sh` | Sigue logs de FastAPI y Model Runner. | No | Consola en vivo. |
+| `web-debug-logs.sh` | Filtra logs Web por `run_id`. | No | Consola o archivo indicado. |
+| `analyze-scores.sh` | Wrapper de `experiments.score_analysis`. | No | `output/analyses/score-analysis-*`. |
+| `audit-score-provenance.sh` | Wrapper de auditoría de procedencia de scores. | No reinferencia | `output/analyses/score-provenance-*`. |
+| `compare-input-scale.sh` | Wrapper de comparación de escala y crop. | Sin clasificación | `output/analyses/input-scale-*`. |
+| `audit-orientation-counterfactual.sh` | Ejecuta contrafactual de orientación. | Puede reutilizar preprocessing/inferencia diagnóstica según el análisis | `output/analyses/orientation-counterfactual-*`. |
+| `audit-dicom-presentation.sh` | Compara conversión canónica vs Modality/VOI. | No clasificación | `output/analyses/dicom-presentation-*`. |
+
+## 6.2 CLI de datasets
+
+### `python -m dataset_pipeline.status`
+
+Muestra disponibilidad y estado de todos los datasets configurados.
+
+### `python -m dataset_pipeline.download --datasets ...`
+
+Ejecuta la política de adquisición declarada. Para datasets con descarga manual, no intenta evadir credenciales/licencias y devuelve instrucciones/estado.
+
+### `python -m dataset_pipeline.inspect --datasets ... [--force-dicom-index]`
+
+Inspecciona metadata y estructura sin ejecutar los modelos. Para RSNA construye/reutiliza el índice DICOM, identifica vistas, duplicados, conflictos y genera manifests de auditoría.
+
+### `python -m dataset_pipeline.prepare --datasets ...`
+
+Genera los inputs canónicos requeridos por los modelos y el manifest preparado. No modifica los DICOM raw.
+
+## 6.3 CLI de modelos
+
+### `python -m model_tools.status`
+
+Consulta el estado de los modelos mediante el Model Runner.
+
+### `python -m model_tools.ensure --models ...`
+
+Materializa/reutiliza el metarepositorio y las imágenes legacy configuradas.
+
+### `python -m model_tools.ensure_gpu --models ... [--force-rebuild]`
+
+Construye/reutiliza las imágenes GPU de compatibilidad.
+
+### `python -m model_tools.gpu_probe --models ...`
+
+Ejecuta una prueba CUDA pequeña dentro del runtime correspondiente. Un probe exitoso valida que el contenedor puede asignar memoria y ejecutar kernels en GPU.
+
+### `python -m model_tools.smoke_test --models ...`
+
+Ejecuta el sample upstream real del modelo y valida el camino end-to-end.
+
+### `python -m model_tools.validate_gpu --models all`
+
+Entry point integrado recomendado. Ejecuta, para cada modelo:
+
+1. `ensure_gpu`;
+2. `gpu_probe`;
+3. `smoke_test`.
+
+Genera un reporte JSON persistente y devuelve exit code distinto de cero si la validación no queda `READY`.
+
+## 6.4 Prueba diagnóstica operativa
+
+### `python -m tests_flow.normal`
+
+Ejecuta un Normal Test. Soporta:
+
+- `--datasets`;
+- `--samples`;
+- `--sampling sequential|random|stratified|balanced`;
+- `--seed`;
+- `--weights`;
+- `--threshold`;
+- `--config`;
+- `--max-runtime-minutes`.
+
+Produce `raw_model_predictions.csv`, `predictions.csv`, métricas, configuración usada, manifests seleccionados y evidencia de orientación.
+
+## 6.5 Scripts de experimentos
+
+| Entry point | Función | Reinferencia |
+|---|---|---|
+| `experiments.run` | Abre experimento formal, excluye diagnósticos, divide 30/70, orienta e infiere **solo Configuration Set**, evalúa la grilla y selecciona configuración. | Sí, Configuration únicamente. |
+| `experiments.freeze` | Crea `frozen_configuration.yaml`. | No. |
+| `experiments.final_evaluation` | Infiere/evalúa Final Test después del freeze; reusa chunks válidos. | Sí, Final Test si no existe cache válido. |
+| `experiments.score_analysis` | Analiza scores ya guardados, distribuciones, AUC, AUPRC y candidatos diagnósticos. | No. |
+| `experiments.score_provenance` | Audita procedencia y reconstrucción de scores desde outputs nativos. | No. |
+| `experiments.orientation_preflight` | Ejecuta/audita resolución de orientación label-blind sobre un run existente. | No clasificación. |
+| `experiments.orientation_counterfactual` | Evalúa estudios sospechosos con orientación alternativa para diagnóstico metodológico. | Diagnóstico dirigido. |
+| `experiments.input_fidelity` | Audita fidelidad entre inputs canónicos y preprocessing de los modelos. | No clasificación. |
+| `experiments.input_scale_comparison` | Compara escala de intensidad del dataset con sample upstream y opcionalmente crop NYU. | No clasificación. |
+| `experiments.dicom_presentation_counterfactual` | Compara conversión actual, Modality LUT y VOI presentation. | No clasificación. |
+| `experiments.upstream_reference_validation` | Ejecuta GMIC/NYU/GLAM sobre el sample oficial y compara métricas con referencia upstream. | Sí, sample oficial. |
+| `experiments.glam_runtime_differential` | Compara GLAM PyTorch 1.1 CPU vs Blackwell GPU sobre el mismo sample. | Sí, sample oficial. |
+| `experiments.breast_ensemble_analysis` | Compara agregación actual vs alternativa breast-aware a partir de scores ya existentes. | No. |
+
+## 6.6 Qué scripts no deben usarse para seleccionar la configuración formal
+
+Los análisis diagnósticos (`score_analysis`, contrafactuales, upstream sample, differential runtime, etc.) sirven para validar implementación y semántica. **No son elegibles para congelar pesos o threshold del experimento RSNA**. La selección formal proviene exclusivamente del Configuration Set abierto por `experiments.run`.
+
+---
+
+# 7. Flujo Web
+
+## 7.1 Diagrama del flujo Web
+
+```mermaid
+flowchart TD
+    A[Usuario abre Streamlit] --> B[Recuperar configuración Web desde PostgreSQL]
+    B --> C{Configuración recuperada?}
+    C -- No --> C1[Bloquear evaluación y ofrecer reintento]
+    C -- Sí --> D[Configurar CPU/GPU, pesos y threshold]
+    D --> E[Opcional: Actualizar configuración]
+    E --> F[Persistir valores para futuras sesiones en PostgreSQL]
+    D --> H[Cargar 4 a 20 DICOM del mismo estudio]
+    F --> H
+
+    H --> I[Staging temporal en web_scratch]
+    I --> J[FastAPI /single-cases/inspect]
+    J --> K{L_CC R_CC L_MLO R_MLO resueltas?}
+    K -- No --> L[Generar preview y resolver vista manualmente]
+    L --> J
+    K -- Sí --> M[Ejecutar evaluación]
+
+    M --> N[LangGraph valida y orquesta]
+    N --> O[Preparación DICOM a PNG16 canónico]
+    O --> P[Política de orientación]
+    P --> Q[Preparar data.pkl / inputs de modelos]
+    Q --> R[Model Runner]
+    R --> S[GMIC]
+    S --> T[NYU / DMV-CNN]
+    T --> U[GLAM]
+    U --> V[Normalizar scores]
+    V --> W[Weighted Soft Voting]
+    W --> X[Clasificación + discordancia + tiempos]
+
+    X --> Y[Persistir resultado estructurado en PostgreSQL]
+    X --> Z[Persistir DICOM/PNG/audit/result en MinIO]
+    Y --> AA[Mostrar resultado en Streamlit]
+    Z --> AA
+    AA --> AB[Eliminar scratch temporal]
 ```
 
-Solicitar solo CBIS-DDSM para una prueba inicial:
+## 7.2 Etapas Web visibles
 
-```bash
-docker compose exec fastapi python -m dataset_pipeline.download --datasets cbis_ddsm
-```
+La interfaz reporta progreso para:
 
-Solicitar solo VinDr-Mammo:
+1. `PREPARATION` — preparación del estudio.
+2. `ORIENTATION` — normalización de orientación.
+3. `MODEL_INPUT_PREPARATION` — construcción del contrato de entrada.
+4. `GMIC`.
+5. `NYU / DMV-CNN`.
+6. `GLAM`.
+7. `ENSEMBLE`.
+8. `PERSISTENCE`.
 
-```bash
-docker compose exec fastapi python -m dataset_pipeline.download --datasets vindr
-```
+Los tiempos Web son wall-clock medidos con `time.monotonic()`. Las métricas internas de runtime se conservan para diagnóstico, pero no sustituyen el tiempo total observado por el usuario.
 
-Solicitar todos los datasets configurados que aún falten:
+## 7.3 Resolución de proyecciones
 
-```bash
-docker compose exec fastapi python -m dataset_pipeline.download --datasets all
-```
+La ruta Web prioriza metadata DICOM:
 
-**Importante:** los dos datasets pueden requerir pasos de acceso/licencia fuera del programa. Cuando eso ocurra, el comando devuelve `MANUAL_DOWNLOAD_REQUIRED` y crea `DOWNLOAD_INSTRUCTIONS.md` dentro de `workspace/datasets/raw/<dataset>/`. El agente nunca intenta eludir esos controles.
+- `ViewCodeSequence`;
+- `ViewPosition`;
+- `ImageLaterality` / `Laterality`;
+- campos descriptivos auxiliares cuando son necesarios.
 
-`docker compose up -d` no invoca ninguno de estos comandos.
+Si no puede determinar CC/MLO de forma segura, genera un preview solo para revisión humana. El preview **no se usa como input del modelo**.
 
-## 5. Preparación de datasets
+## 7.4 Configuración Web
 
-### CBIS-DDSM — adapter oficial TCIA (v0.16)
+La configuración Web incluye:
 
-CBIS-DDSM ya **no requiere que el investigador construya manualmente `source_manifest.csv`**. El adapter descubre recursivamente el árbol DICOM descargado con NBIA Data Retriever y los cuatro CSV oficiales:
+- `CPU` o `GPU`;
+- pesos base o personalizados de GMIC/NYU/GLAM;
+- threshold base o personalizado.
+
+Los controles de la interfaz se aplican inmediatamente a la evaluación Web actual. El botón **Actualizar configuración** persiste esos valores en PostgreSQL para que se restauren al abrir una nueva sesión o navegador.
+
+La configuración se persiste en `web_evaluation_settings` y se restaura en futuras sesiones. Desde v0.35.3 los volúmenes Docker de PostgreSQL y MinIO tienen nombres estables y no dependen del nombre de la carpeta de la versión.
+
+## 7.5 Aislamiento respecto del Batch
+
+La Web no escribe:
+
+- `config/models.yaml`;
+- `config/ensemble.yaml`;
+- `config/experiments.yaml`;
+- `GMIC_DEVICE`;
+- `NYU_DEVICE`;
+- `GLAM_DEVICE`.
+
+El Batch conserva sus dispositivos, pesos, thresholds y reglas experimentales.
+
+## 7.6 Persistencia Web
+
+En MinIO cada caso queda bajo:
 
 ```text
-mass_case_description_train_set.csv
-mass_case_description_test_set.csv
-calc_case_description_train_set.csv
-calc_case_description_test_set.csv
+mammography-web/
+└── runs/<run_id>/
+    ├── input/
+    ├── canonical/
+    ├── audit/
+    ├── result/single_case_result.json
+    └── manifest/minio_manifest.json
 ```
 
-Deje todo bajo el raw directory del workspace. No es necesario aplanar ni renombrar la estructura que genere NBIA:
+PostgreSQL conserva scores y metadatos del run. Si MinIO falla después de completar la inferencia, la predicción no se recalcula ni se modifica; el fallo de object storage se registra como no bloqueante.
+
+---
+
+# 8. Flujo Batch
+
+## 8.1 Diagrama del flujo Batch
+
+```mermaid
+flowchart TD
+    A[Configurar .env] --> B[Levantar Docker Compose]
+    B --> C[Doctor / status]
+    C --> D[Validar GPU host si aplica]
+    D --> E[Validate models: ensure GPU -> probe -> smoke]
+    E --> F[Dataset status]
+    F --> G[Inspect dataset]
+    G --> H[Prepare dataset]
+
+    H --> I[Normal Test diagnóstico]
+    I --> J[Auditorías: scores, provenance, orientación, fidelidad, escala]
+
+    J --> K[Excluir Diagnostic Set previamente observado]
+    K --> L[Formal pool RSNA]
+    L --> M[Split estratificado por paciente 30/70]
+
+    M --> N[Configuration Set]
+    M --> O[Final Test reservado sin inferir]
+
+    N --> P[Orientación por chunks]
+    P --> Q[Inferencia GMIC -> NYU -> GLAM por chunks]
+    Q --> R[Scores Configuration]
+    R --> S[Evaluar 16 pesos x 5 thresholds = 80 configuraciones]
+    S --> T[Ranking y best_configuration]
+    T --> U[Revisión humana/metodológica]
+    U --> V[Freeze frozen_configuration.yaml]
+
+    V --> W[Final Test]
+    W --> X[Orientación por chunks]
+    X --> Y[Inferencia GMIC -> NYU -> GLAM]
+    Y --> Z[Evaluar configuración congelada]
+    Z --> AA[Comparar selected vs baseline vs modelos individuales]
+    AA --> AB[Final report / métricas / revisión]
+```
+
+## 8.2 Pool formal RSNA
+
+En el workspace validado:
+
+- estudios preparados: `11,913`;
+- Diagnostic Set observado previamente: `10`;
+- pool formal todavía no observado: `11,903`.
+
+Con `configuration_ratio=0.30` y `seed=42`:
+
+- Configuration Set: `3,570`;
+- Final Test reservado: `8,333`;
+- overlap de pacientes: `0`;
+- cobertura del pool formal: `100%`.
+
+El **100% formal** es `Configuration + Final Test` después de excluir los 10 casos diagnósticos. No significa volver a mezclar esos 10 estudios dentro del experimento ciego.
+
+## 8.3 Orden metodológico obligatorio
+
+El orden es:
+
+**Configuration → preparación/split → ORIENTATION → INFERENCE (GMIC, NYU, GLAM) → 80 configuraciones → ranking → best_configuration → freeze → Final Test**.
+
+El Final Test no debe producir scores antes del freeze. `experiment_plan.json` registra esta regla y hashes de los manifests para detectar cambios.
+
+## 8.4 Inferencia resumible
+
+`config/experiments.yaml` define actualmente:
+
+```yaml
+formal_inference:
+  mode: chunked_resumable
+  chunk_size: 25
+  resume_enabled: true
+  models_parallel: false
+  model_order: [gmic, nyu, glam]
+```
+
+Cada chunk exitoso se valida por identidad y hashes. Si una corrida se interrumpe:
+
+- los chunks válidos se reutilizan;
+- el chunk incompleto se repite;
+- no debe iniciarse un experimento diferente para “continuar” el mismo split.
+
+---
+
+# 9. Dockerfiles y Docker Compose
+
+## 9.1 `docker/app.Dockerfile`
+
+Construye la imagen común de aplicación usada por:
+
+- `bootstrap`;
+- `fastapi`;
+- `streamlit`.
+
+Incluye Python 3.12, dependencias de aplicación, pydicom/codecs, código del agente, scripts Python, UI y configuración. **No contiene los frameworks ML de los tres modelos**.
+
+El CMD por defecto arranca FastAPI; Streamlit sobrescribe el command desde Compose.
+
+## 9.2 `docker/model-runner.Dockerfile`
+
+Construye el controlador `model-runner` sobre `docker:29-cli`.
+
+Incluye:
+
+- Docker CLI;
+- Python;
+- FastAPI/Uvicorn;
+- Git/Curl;
+- configuración de modelos.
+
+No instala PyTorch, TensorFlow, CUDA Toolkit ni cuDNN. Habla con el Docker Engine del host a través del socket montado.
+
+## 9.3 `docker/model-compat/gmic-blackwell.Dockerfile`
+
+Runtime GPU compatible para GMIC sobre Blackwell:
+
+- Python 3.10;
+- PyTorch 2.7.1;
+- torchvision 0.22.1;
+- CUDA 12.8 wheels;
+- commit GMIC fijado;
+- parches de API/índices necesarios para preservar semántica legacy;
+- compatibilidad del contrato de benign labels opcionales sin inventar ground truth.
+
+## 9.4 `docker/model-compat/nyu-blackwell.Dockerfile`
+
+Runtime GPU para DMV-CNN/NYU:
+
+- mismo commit upstream fijado;
+- PyTorch 2.7.1 + CUDA 12.8;
+- compatibilidad `torch.has_cudnn`;
+- preservación del patch histórico de directorios de heatmaps.
+
+## 9.5 `docker/model-compat/glam-blackwell.Dockerfile`
+
+Runtime GPU para GLAM:
+
+- commit upstream fijado;
+- PyTorch 2.7.1 + CUDA 12.8;
+- backend gráfico headless;
+- parches de device placement;
+- división entera legacy;
+- `grid_sample(..., align_corners=True)` para aproximar semántica PyTorch 1.1;
+- contrato de labels benignos opcionales sin crear etiquetas clínicas.
+
+La equivalencia del runtime se valida con `experiments.glam_runtime_differential`.
+
+## 9.6 `docker-compose.yml`
+
+### Servicios
+
+| Servicio | Imagen | Responsabilidad |
+|---|---|---|
+| `workspace-anchor` | `alpine:3.20` | Mantiene montados workspace y scratch. |
+| `postgres` | `postgres:16-alpine` | Resultados estructurados y configuración Web. |
+| `redis` | `redis:7-alpine` | Dependencia auxiliar de infraestructura. |
+| `minio` | `minio/minio` | Object storage Web. |
+| `model-runner` | Dockerfile propio | Control de imágenes/contenedores de modelos. |
+| `bootstrap` | `app.Dockerfile` | Inicializa workspace, DB y auditoría de configuración. |
+| `fastapi` | `app.Dockerfile` | Backend Web y entorno CLI Batch. |
+| `streamlit` | `app.Dockerfile` | Interfaz Web. |
+
+### Volúmenes
+
+| Volumen | Tipo | Uso |
+|---|---|---|
+| `${HOST_WORKSPACE:-./workspace}` | bind host | Persistencia Batch. |
+| `mammography-postgres-data` (`POSTGRES_VOLUME_NAME`) | named volume estable | DB PostgreSQL; conserva configuración e histórico Web entre upgrades. |
+| `mammography-minio-data` (`MINIO_VOLUME_NAME`) | named volume estable | Objetos MinIO; conserva evidencia Web entre upgrades. |
+| `mammography-web-scratch` (`WEB_SCRATCH_VOLUME_NAME`) | named volume estable | Archivos temporales de casos Web. |
+| `/var/run/docker.sock` | bind | Permite al Model Runner controlar contenedores hijos. |
+
+Los nombres explícitos anteriores son independientes del nombre de la carpeta donde se extraiga cada versión. Esto evita que Docker Compose cree una base PostgreSQL o un MinIO nuevos simplemente por pasar de una carpeta `v0.35.x` a otra.
+
+Para una migración única desde volúmenes creados por versiones anteriores se incluye `scripts/migrate-legacy-durable-volumes.sh`. El script no sobrescribe un volumen destino que ya contenga datos y exige que el volumen origen no esté siendo usado por un contenedor activo.
+
+## 9.7 Modelo de ejecución de contenedores de IA
+
+Los servicios GMIC/NYU/GLAM no permanecen levantados como servicios Compose. El Model Runner crea un contenedor temporal por ejecución, obtiene el output y lo elimina. Esto mantiene aislado cada stack ML.
+
+---
+
+# 10. Ejecución completa del proceso Batch
+
+Esta sección describe el flujo recomendado para RSNA desde una instalación levantada hasta la evaluación sobre el **100% del pool formal**. Los tiempos son aproximados y dependen de disco, red, cache Docker y GPU. Cuando existe una medición real del proyecto se indica explícitamente.
+
+## 10.1 Preparar configuración
+
+Copiar el archivo de entorno.
+
+**Tiempo estimado:** menos de 5 segundos.
+
+```bash
+cp .env.example .env
+```
+
+Revisar como mínimo:
+
+```env
+HOST_WORKSPACE=./workspace
+DEFAULT_MODEL_DEVICE=cpu
+GMIC_DEVICE=gpu
+NYU_DEVICE=gpu
+GLAM_DEVICE=gpu
+ALLOW_GPU=true
+GPU_NUMBER=0
+```
+
+En la workstation Blackwell ya validada, GMIC/NYU/GLAM usan GPU. Para otro hardware, validar primero antes de ejecutar el experimento formal.
+
+## 10.2 Levantar la plataforma
+
+**Tiempo estimado:** 2–15 minutos con cache parcial; la primera construcción puede tardar más por descarga de imágenes/dependencias.
+
+```bash
+docker compose up -d --build
+```
+
+Verificar servicios.
+
+**Tiempo estimado:** menos de 10 segundos.
+
+```bash
+docker compose ps -a
+```
+
+Ejecutar diagnóstico Docker/Runner.
+
+**Tiempo estimado:** 10–30 segundos.
+
+```bash
+./scripts/doctor.sh
+```
+
+Revisar estado agregado.
+
+**Tiempo estimado:** 10–30 segundos.
+
+```bash
+./scripts/status.sh
+```
+
+Los endpoints esperados son:
 
 ```text
-workspace/datasets/raw/cbis_ddsm/
-├── CBIS-DDSM/                 # nombre/jerarquía de NBIA puede variar
-│   └── ... DICOM ...
-└── metadata/                  # recomendado; también puede estar en otro subdirectorio
-    ├── mass_case_description_train_set.csv
-    ├── mass_case_description_test_set.csv
-    ├── calc_case_description_train_set.csv
-    └── calc_case_description_test_set.csv
+http://localhost:8000/health
+http://localhost:8010/doctor
+http://localhost:8010/health
 ```
 
-Antes de convertir imágenes, inspeccione el release descargado:
+## 10.3 Validar GPU del host
+
+Solo si el Batch se ejecutará en GPU.
+
+**Tiempo estimado:** 10–30 segundos.
 
 ```bash
-docker compose exec fastapi python -m dataset_pipeline.inspect --datasets cbis_ddsm
-```
-
-La inspección no inventa etiquetas ni vistas. Genera y conserva:
-
-```text
-workspace/datasets/manifests/cbis_ddsm_metadata_rows.csv
-workspace/datasets/manifests/cbis_ddsm_view_catalog.csv
-workspace/datasets/rejected/cbis_ddsm_unresolved_metadata_rows.csv
-workspace/datasets/rejected/cbis_ddsm_incomplete_studies.csv
-workspace/datasets/raw/cbis_ddsm/source_manifest.csv
-workspace/runtime/dataset_cache/cbis_ddsm_dicom_index.csv
-```
-
-Ground truth se obtiene **exclusivamente** de la columna oficial `pathology`:
-
-```text
-MALIGNANT                -> 1
-BENIGN                   -> 0
-BENIGN_WITHOUT_CALLBACK  -> 0
-```
-
-BI-RADS/`assessment` no se convierte a cáncer/no-cáncer. Valores de patología desconocidos se reportan como no resueltos.
-
-El ensemble actual incluye el clasificador exam-level DMV-CNN/NYU, por lo que el manifiesto canónico admite únicamente estudios con las cuatro vistas estándar:
-
-```text
-L-CC, R-CC, L-MLO, R-MLO
-```
-
-Si una vista falta, el estudio queda en `cbis_ddsm_incomplete_studies.csv`; v0.16 **no duplica ni sintetiza** una vista faltante. El comando `inspect` informa `complete_four_view_studies` y `ensemble_compatible` antes de realizar la conversión costosa.
-
-Cuando la inspección sea satisfactoria:
-
-```bash
-docker compose exec fastapi python -m dataset_pipeline.prepare --datasets cbis_ddsm
-```
-
-La preparación convierte únicamente los estudios compatibles a PNG de 16 bits y crea:
-
-```text
-workspace/datasets/processed/cbis_ddsm/images/
-workspace/datasets/manifests/cbis_ddsm.csv
-```
-
-Si no existe ningún estudio completo de cuatro vistas, el resultado es `INSUFFICIENT_FOUR_VIEW_STUDIES` y no se fabrica un dataset compatible.
-
-### Otros adapters
-
-VinDr conserva en esta versión el contrato genérico de `source_manifest.csv`. No se modificó su comportamiento en v0.16.
-
-## 6. Modelos reales: un Runner y tres imágenes aisladas
-
-Después de `docker compose up -d --build`, `docker compose ps` debe mostrar de forma permanente:
-
-```text
-mammography-model-runner
-```
-
-Las tres imágenes reales de los modelos se construyen localmente bajo demanda a partir de los Dockerfiles del metarepositorio de NYU:
-
-```text
-mammography-model-gmic:research
-mammography-model-nyu:research
-mammography-model-glam:research
-```
-
-Antes de construir modelos, confirma que el Runner puede utilizar Docker Desktop/Engine:
-
-```bash
-curl http://localhost:8010/health
-```
-
-Debe devolver `"docker_daemon": true`. Si no ocurre, ejecuta `./scripts/doctor.sh`.
-
-Estado de los tres modelos a través del runner:
-
-```bash
-docker compose exec fastapi python -m model_tools.status
-```
-
-Construir/verificar las tres imágenes sin ejecutar inferencia:
-
-```bash
-docker compose exec fastapi python -m model_tools.ensure --models gmic nyu glam
-```
-
-Smoke test con los datos de muestra del metarepository:
-
-```bash
-docker compose exec fastapi python -m model_tools.smoke_test --models gmic nyu glam
-```
-
-Con `MODEL_BOOTSTRAP_MODE=lazy`, `docker compose up` construye el Model Runner pero **no construye todavía las tres imágenes legacy**. `ensure`, `smoke-test` o la primera inferencia construyen/reutilizan la imagen específica necesaria.
-
-El Model Runner no contiene frameworks ML. Su función es: routing por modelo, construcción/reutilización de imágenes, ejecución temporal, serialización GPU, logging y métricas.
-
-### Score canónico a nivel de estudio
-
-Se requiere un único score por estudio para el voting. Las reglas están congeladas en `config/models.yaml`:
-
-- GMIC: máximo `malignant_pred` de las imágenes del estudio.
-- GLAM: máximo `malignant_pred` de las imágenes del estudio.
-- DMV-CNN/NYU: máximo entre `left_malignant` y `right_malignant`.
-
-Son reglas determinísticas; no hay calibración aprendida.
-
-## 7. Prueba normal
-
-La prueba normal usa por defecto `--sampling sequential` para compatibilidad con versiones anteriores. v0.21 añade selección reproducible consciente de clase:
-
-- `sequential`: primeros N estudios del manifest (legacy).
-- `random`: N estudios aleatorios reproducibles mediante `--seed`.
-- `stratified`: mantiene aproximadamente la proporción de clases del universo disponible. En los 105 estudios CBIS-DDSM actuales (72 benignos/33 malignos), `--samples 10` produce objetivo **7 benignos / 3 malignos**.
-- `balanced`: cuotas iguales por clase; `--samples 10` produce **5 benignos / 5 malignos** si existen suficientes casos.
-
-Toda corrida escribe `selected_studies.csv`, por lo que los IDs exactos usados quedan auditables. `configuration_used.yaml` registra sampling/seed/distribuciones y `run_summary.json` registra estudios/imágenes procesados y tiempo total.
-
-Prueba representativa estratificada:
-
-```bash
-docker compose exec fastapi python -m tests_flow.normal \
-  --datasets cbis_ddsm \
-  --samples 10 \
-  --sampling stratified \
-  --seed 42 \
-  --max-runtime-minutes 30
-```
-
-Prueba de integración balanceada (recomendada para comprobar ambas clases antes de aumentar el volumen):
-
-```bash
-docker compose exec fastapi python -m tests_flow.normal \
-  --datasets cbis_ddsm \
-  --samples 10 \
-  --sampling balanced \
-  --seed 42 \
-  --max-runtime-minutes 30
-```
-
-Pesos manuales:
-
-```bash
-docker compose exec fastapi python -m tests_flow.normal \
-  --datasets cbis_ddsm \
-  --samples 10 \
-  --sampling stratified \
-  --seed 42 \
-  --weights 0.50 0.30 0.20 \
-  --threshold 0.45
-```
-
-Configuración congelada de un experimento anterior:
-
-```bash
-docker compose exec fastapi python -m tests_flow.normal \
-  --datasets cbis_ddsm \
-  --samples 10 \
-  --sampling stratified \
-  --seed 42 \
-  --config /workspace/output/experiments/<ID>/frozen_configuration.yaml
-```
-
-El límite `--max-runtime-minutes` se evalúa **entre chunks completos**; no mata una inferencia ya iniciada. Si se alcanza después de al menos un chunk, la corrida queda `PARTIAL_TIME_LIMIT` y conserva evidencia de los chunks completados. No modifica ni limpia el dataset preparado.
-
-`resource_metrics.csv` usa desde v0.21 el campo `monitoring_samples`: es el número de lecturas periódicas del monitor de CPU/GPU, **no** el número de estudios o imágenes.
-
-## 8. Prueba experimental
-
-v0.23 mantiene la separación metodológica **Configuration Set → freeze → Final Test Set**. No se deben generar scores del Final Test Set antes de congelar pesos/threshold. La política es inferir cada estudio como máximo una vez dentro del experimento: Configuration Set durante `experiments.run`; Final Test Set recién durante `final_evaluation`, con reutilización del cache si se repite ese comando.
-
-### 8.1 Análisis CPU de scores ya existentes
-
-Antes de abrir un experimento formal puede analizar cualquier `raw_model_predictions.csv` ya generado:
-
-```bash
-docker compose exec fastapi python -m experiments.score_analysis \
-  --input /workspace/output/normal_tests/<RUN>/raw_model_predictions.csv
-```
-
-Este comando **no ejecuta modelos ni usa GPU**. No modifica el run de origen. Escribe bajo `workspace/output/analyses/`:
-
-- `score_summary.json`: rango observado, AUC baseline, métricas threshold-dependent del baseline, warnings y research guards.
-- `model_metrics.csv`: ROC-AUC y estadísticos benign/malignant por GMIC, NYU, GLAM y ensemble baseline.
-- `score_distribution.csv`: min/quantiles/media/std por clase.
-- `model_correlations.csv`: Pearson/Spearman entre scores.
-- `roc_points.csv`: puntos de curva ROC cuando hay ambas clases.
-- `candidate_thresholds.csv`: preview 16×5 de thresholds adaptativos con `threshold_source=analysis_score_quantile`; no es una selección formal.
-- `diagnostic_configurations.csv`: métricas CPU de los 80 candidatos sobre el set analizado; incluye `diagnostic_only=true` y `eligible_for_freeze=false`.
-- `diagnostic_ranking.csv`: ranking diagnóstico con la política v0.23; sirve para entender el comportamiento antes del experimento formal, no para congelar configuración.
-- `score_analysis_report.md`.
-
-v0.23 **no invierte scores con AUC < 0.5, no calibra y no entrena**; solo registra la evidencia. Además, el análisis diagnóstico usa `threshold_source=analysis_score_quantile`; `configuration_score_quantile` queda reservado al experimento formal.
-
-### 8.2 Thresholds adaptativos del Configuration Set
-
-La grilla fija histórica `0.40,0.45,0.50,0.55,0.60` queda documentada como legacy pero no se usa en el experimento v0.23. Para cada una de las 16 combinaciones de pesos se calculan cinco candidatos a partir de sus scores en el Configuration Set:
-
-```text
-T01 = quantile 10%
-T02 = quantile 30%
-T03 = quantile 50%
-T04 = quantile 70%
-T05 = quantile 90%
-```
-
-La derivación usa **solo scores**, nunca `ground_truth`. Después de fijar los cinco valores se usan las etiquetas del Configuration Set para calcular TN/FP/FN/TP, Sensitivity, Specificity, PPV, NPV, FPR, Accuracy, Balanced Accuracy y ROC-AUC. Por tanto siguen existiendo exactamente **16 × 5 = 80 configuraciones** y el Final Test Set no participa en la optimización.
-
-### 8.3 Abrir el experimento formal completo
-
-```bash
-docker compose exec fastapi python -m experiments.run \
-  --datasets cbis_ddsm \
-  --configuration-ratio 0.30 \
-  --seed 42
-```
-
-Sin `--samples`, se parte de los 105 estudios preparados. Primero se divide por paciente y de forma estratificada. Aproximadamente 30% queda como Configuration Set y 70% como Final Test Set reservado. **Solo el Configuration Set se infiere en esta fase.**
-
-Archivos principales:
-
-```text
-experiment_plan.json
-configuration_set_manifest.csv
-final_test_manifest.csv
-configuration_set_predictions.csv
-configuration_score_analysis/
-all_configurations.csv
-ranking.csv
-best_configuration.json
-configuration_report.md
-```
-
-La política de selección v0.23 evita escoger un threshold solo porque produzca `FN=0`. Primero selecciona la combinación de pesos con mejor ROC-AUC en el Configuration Set; después elige el threshold con mayor **Balanced Accuracy**. En empates se prioriza mayor Sensitivity, luego mayor Specificity/menor FP y finalmente cercanía determinística al baseline histórico. El Final Test Set no interviene en ninguna de estas decisiones.
-
-### 8.4 Congelar configuración
-
-```bash
-docker compose exec fastapi python -m experiments.freeze --experiment <ID>
-```
-
-Crea `frozen_configuration.yaml`. Si ya existe con contenido diferente, el proceso falla: no se permite reoptimizar silenciosamente la configuración.
-
-### 8.5 Evaluar el Final Test Set reservado
-
-```bash
-docker compose exec fastapi python -m experiments.final_evaluation --experiment <ID>
-```
-
-Solo después del freeze se ejecutan GMIC+NYU+GLAM sobre el Final Test Set. Si `final_inference/raw_model_predictions.csv` ya existe y es compatible, v0.23 lo reutiliza en vez de volver a ejecutar los modelos. La evaluación final no cambia pesos ni threshold.
-
-## 9. Configuraciones agregadas durante la implementación
-
-Cualquier configuración que fue necesaria para convertir la especificación en software ejecutable está registrada en dos lugares:
-
-```text
-config/config_additions.yaml
-docs/CONFIG_ADDITIONS.md
-```
-
-Al arrancar el servicio, esas decisiones también se escriben en:
-
-```text
-workspace/logs/configuration_additions.log
-```
-
-Así queda documentado **qué se agregó y por qué**.
-
-## 10. Tests
-
-```bash
-pytest -q
-```
-
-Los tests unitarios usan únicamente fixtures numéricos para probar voting, métricas, selección y filtros. **No simulan la inferencia de GMIC/NYU/GLAM.** La inferencia solo se considera validada cuando el smoke test real de la imagen oficial del modelo, lanzada por el Model Runner, termina correctamente.
-
-## 11. Limitaciones conscientes del prototipo
-
-- La conversión automática desde la estructura nativa completa de cada dataset no se adivina: el adapter requiere un manifiesto de origen trazable. Esto evita introducir ground truth incorrecto.
-- Las imágenes oficiales de los modelos usan stacks legacy y deben validarse en la estación de investigación antes de medir tiempos o métricas de tesis.
-- XAI solo se conserva cuando la ejecución oficial del modelo produce un artefacto real. Para GMIC/GLAM el Model Runner habilita la opción oficial de visualización dentro de la imagen correspondiente; si no se genera, se registra como ausencia de evidencia, nunca se crea una imagen falsa.
-- GMIC y GLAM son arquitectónicamente relacionados, por lo que sus errores pueden estar correlacionados.
-
-## 12. Evidencia de implementación
-
-Ver `VERIFICATION.md` y `docs/ARCHITECTURE_CHANGE_LOG.md` para distinguir lo validado en este paquete de lo que debe ejecutarse necesariamente en la workstation con Docker/GPU.
-
-## v0.7 — GPU host preflight para Fedora Remix / WSL2
-
-Si `nvidia-smi` funciona en WSL pero Docker responde:
-
-```text
-failed to discover GPU vendor from CDI: no known GPU vendor found
-```
-
-la GPU todavía no está disponible para contenedores. No habilite ningún `<MODEL>_DEVICE=gpu` todavía. Primero configure NVIDIA Container Toolkit/CDI en la misma distribución Fedora WSL que ejecuta Docker Engine:
-
-```bash
-docker compose down --remove-orphans
-./scripts/setup-nvidia-container-toolkit-fedora-wsl.sh
 ./scripts/gpu-doctor.sh
 ```
 
-Después valide:
-
-```bash
-docker run --rm --gpus all \
-  nvidia/cudagl:10.1-devel-ubuntu18.04 \
-  nvidia-smi
-```
-
-Solo cuando esa prueba funcione se debe iniciar la prueba GPU de GMIC/NYU/GLAM. No instale un driver NVIDIA Linux dentro de WSL; el driver GPU es el de Windows y el host WSL solo requiere la integración de contenedores. Ver `docs/MIGRATION_V0_7.md`.
-
-
-## v0.11 — Runtime Blackwell de DMV-CNN / NYU
-
-DMV-CNN/NYU dispone de un perfil GPU propio en `config/models.yaml`:
+Resultado esperado:
 
 ```text
-mammography-model-nyu:blackwell-cu128
-Python 3.10
-PyTorch 2.7.1
-TorchVision 0.22.1
-CUDA 12.8
+GPU_HOST_READY
 ```
 
-El perfil conserva el commit upstream `de2b0855d02984df0f516008bb4513ff71460e21` y no cambia los checkpoints ni la arquitectura. La imagen legacy `mammography-model-nyu:research` continúa siendo la referencia CPU.
+Si la distribución es Fedora Remix sobre WSL2 y todavía no existe NVIDIA Container Toolkit, el helper disponible es:
 
-Valide el nuevo runtime en este orden:
+**Tiempo estimado:** 2–10 minutos más descargas del sistema.
 
 ```bash
-docker compose exec fastapi \
-  python -m model_tools.ensure_gpu \
-  --models nyu
-
-docker compose exec fastapi \
-  python -m model_tools.gpu_probe \
-  --models nyu
+./scripts/setup-nvidia-container-toolkit-fedora-wsl.sh
 ```
 
-Solo después de `GPU_READY`, establezca `NYU_DEVICE=gpu`, recree `model-runner`/`fastapi` y ejecute:
+Este script modifica el host y debe ejecutarse únicamente cuando realmente se necesita instalar/configurar el Toolkit.
+
+## 10.4 Validar los tres runtimes reales
+
+Comando recomendado integrado:
+
+**Tiempo estimado:** 5–20 minutos si las imágenes ya están construidas; la primera construcción puede tardar 20–60 minutos o más según red/cache.
 
 ```bash
-docker compose exec fastapi \
-  python -m model_tools.smoke_test \
-  --models nyu
+./scripts/validate-models.sh all
 ```
 
-El perfil no se configura en `.env`; `.env` únicamente decide `NYU_DEVICE=cpu|gpu`. Ver `docs/MIGRATION_V0_11.md`.
+Equivale a:
 
-## v0.10 — Perfil GPU como metadato del modelo y dispositivo por modelo
+1. ensure de imagen GPU;
+2. CUDA probe;
+3. smoke test upstream.
 
-`GPU_RUNTIME_PROFILE` fue eliminado de `.env` y de Docker Compose. El perfil de compatibilidad pertenece ahora exclusivamente a cada modelo en `config/models.yaml`. La selección CPU/GPU sigue siendo una decisión de despliegue y se resuelve por modelo mediante `GMIC_DEVICE`, `NYU_DEVICE` y `GLAM_DEVICE`, con `DEFAULT_MODEL_DEVICE` como fallback.
-
-Estado validado en la workstation al crear esta versión:
+Resultado esperado:
 
 ```text
-GMIC  -> GPU / blackwell-cu128  (gpu_probe + smoke test reales PASS)
-NYU   -> CPU                    (smoke test real PASS)
-GLAM  -> CPU                    (smoke test real PASS)
+overall_status = READY
 ```
 
-Para reproducir esa combinación:
-
-```env
-DEFAULT_MODEL_DEVICE=cpu
-GMIC_DEVICE=gpu
-NYU_DEVICE=cpu
-GLAM_DEVICE=cpu
-ALLOW_GPU=true
-GPU_NUMBER=0
-```
-
-El smoke test GPU de GMIC reportado por la workstation produjo `predictions.csv`, 16 artefactos XAI, `elapsed_seconds=86.9096`, `avg_gpu_util_percent=8.25` y `max_gpu_memory_mib=2424`. Estas cifras son evidencia de smoke test, no un benchmark definitivo.
-
-See `docs/MIGRATION_V0_10.md` and `docs/WORKSTATION_VALIDATION.md`.
-
-## v0.9 — GPU probe success-path fix
-
-The GPU compatibility architecture from v0.8 is unchanged. v0.9 fixes a Model Runner logging bug
-that could turn a completed `GPU_READY` probe into HTTP 500 because `model` was supplied twice to
-the structured logger. Rebuild only `model-runner` and `fastapi`; the already-built model images
-and host workspace can be reused. See `docs/MIGRATION_V0_9.md`.
-
-## v0.8 — GMIC GPU Blackwell compatibility runtime
-
-The legacy GMIC image remains the reproducible CPU baseline:
+El reporte se conserva bajo:
 
 ```text
-mammography-model-gmic:research
+workspace/output/model_validation/gpu-validation-*.json
 ```
 
-A separate GPU compatibility image is used for the RTX 5060 Ti / Blackwell path:
+No avanzar al experimento formal si algún modelo queda `FAILED` o `SKIPPED` por una condición no esperada.
 
-```text
-mammography-model-gmic:blackwell-cu128
-```
+## 10.5 Consultar estado del dataset
 
-This profile keeps the same GMIC source commit and checkpoints but updates the execution runtime to Python 3.10, PyTorch 2.7.1 and CUDA 12.8 wheels. It is opt-in and must pass the runner-managed GPU probe before real GPU inference.
-
-Build the compatibility image:
-
-```bash
-docker compose exec fastapi \
-  python -m model_tools.ensure_gpu \
-  --models gmic
-```
-
-Then run the fail-safe allocation/kernel probe:
-
-```bash
-docker compose exec fastapi \
-  python -m model_tools.gpu_probe \
-  --models gmic
-```
-
-Expected result:
-
-```text
-status: GPU_READY
-allocation_ok: true
-kernel_ok: true
-```
-
-Only after that result, enable **only that model** in `.env`:
-
-```env
-DEFAULT_MODEL_DEVICE=cpu
-GMIC_DEVICE=gpu
-NYU_DEVICE=cpu
-GLAM_DEVICE=cpu
-ALLOW_GPU=true
-GPU_NUMBER=0
-```
-
-The `blackwell-cu128` profile itself is **not** an environment variable. It is model metadata defined under `models.gmic.gpu_compatibility.profile` in `config/models.yaml`.
-
-Then recreate the application services:
-
-```bash
-docker compose up -d --force-recreate model-runner fastapi streamlit
-```
-
-The runner refuses GPU inference if the selected model has no configured GPU compatibility profile or has not passed `gpu_probe`.
-
-## v0.12 — Runtime Blackwell específico para GLAM
-
-v0.12 completa la definición de perfiles GPU por modelo agregando `mammography-model-glam:blackwell-cu128`. El perfil técnico está en `config/models.yaml`; no existe un perfil GPU global en `.env`.
-
-Después de validar GMIC y DMV-CNN/NYU en GPU, GLAM se habilita de forma independiente:
-
-```bash
-docker compose exec fastapi python -m model_tools.ensure_gpu --models glam
-docker compose exec fastapi python -m model_tools.gpu_probe --models glam
-```
-
-Solo después de `GPU_READY`:
-
-```env
-GMIC_DEVICE=gpu
-NYU_DEVICE=gpu
-GLAM_DEVICE=gpu
-ALLOW_GPU=true
-GPU_NUMBER=0
-```
-
-Luego:
-
-```bash
-docker compose up -d --force-recreate model-runner fastapi
-docker compose exec fastapi python -m model_tools.smoke_test --models glam
-```
-
-El runtime Blackwell de GLAM conserva el commit/checkpoints/arquitectura upstream. Los cambios declarados son únicamente de compatibilidad de ejecución y preservación de semánticas históricas del framework. Ver `docs/MIGRATION_V0_12.md`.
-
-
-## v0.13 — Adapter real de CBIS-DDSM
-
-v0.13 reemplaza el mapping manual de CBIS-DDSM por un adapter específico del release oficial TCIA. Descubre los cuatro archivos de clasificación, resuelve sus `image file path` contra el árbol DICOM de NBIA por ruta/UID y usa un índice de cabeceras DICOM cacheado como fallback. Genera `source_manifest.csv` automáticamente y conserva catálogos de resolución/rechazo.
-
-Flujo recomendado:
+**Tiempo estimado:** menos de 10 segundos.
 
 ```bash
 docker compose exec fastapi python -m dataset_pipeline.status
-docker compose exec fastapi python -m dataset_pipeline.inspect --datasets cbis_ddsm
-docker compose exec fastapi python -m dataset_pipeline.prepare --datasets cbis_ddsm
 ```
 
-El adapter usa únicamente `pathology` como ground truth y mantiene una compuerta de cuatro vistas para el ensemble actual. Ver `docs/MIGRATION_V0_13.md`.
+Para RSNA, los archivos oficiales deben estar disponibles bajo el layout configurado en `workspace/datasets/raw/rsna/`.
 
-## v0.14 — Metadata preflight de CBIS-DDSM y `.env.example` validado
+## 10.6 Inspeccionar RSNA
 
-`.env.example` refleja ahora la configuración que ya pasó pruebas reales en la workstation RTX 5060 Ti:
+En una instalación nueva o cuando cambió el raw dataset:
 
-```env
-DEFAULT_MODEL_DEVICE=cpu
-GMIC_DEVICE=gpu
-NYU_DEVICE=gpu
-GLAM_DEVICE=gpu
-ALLOW_GPU=true
-GPU_NUMBER=0
-```
-
-Si los DICOM de CBIS-DDSM existen pero faltan uno o más de los cuatro CSV oficiales, `inspect` devuelve `METADATA_REQUIRED`, crea `workspace/datasets/raw/cbis_ddsm/METADATA_INSTRUCTIONS.md` y **no inicia** el índice DICOM. Después de colocar los cuatro CSV en cualquier subdirectorio bajo `raw/cbis_ddsm`, se vuelve a ejecutar `inspect`.
-
-## v0.15 — CBIS-DDSM sin re-descarga DICOM
-
-La política histórica v0.15 separó DICOM de metadata. **Desde v0.29.0 la política es más estricta:** el prototipo no descarga ningún archivo de dataset. Tanto los DICOM como los cuatro CSV oficiales se adquieren manualmente y el adapter solo los localiza/valida.
-
-```text
-dataset_pipeline.download --datasets cbis_ddsm
-        │
-        ├── DICOM (~163 GB) -> NUNCA auto-download
-        └── 4 case-description CSV -> NUNCA auto-download
-
-Missing file -> instrucción/estado accionable; no red.
-```
-
-### `metadata.csv` auxiliar
-
-Si existe `workspace/datasets/raw/cbis_ddsm/**/metadata.csv`, v0.15 puede relacionar `SeriesInstanceUID` con el identificador textual TCIA para recuperar `P_XXXXX`, lateralidad y `CC/MLO` cuando el header DICOM no sea suficiente. Esto no modifica labels: `pathology` de los cuatro CSV oficiales sigue siendo la única fuente de ground truth.
-
-### Reutilización del índice DICOM
-
-Después de una inspección exitosa se conserva:
-
-```text
-workspace/runtime/dataset_cache/cbis_ddsm_dicom_index.csv
-```
-
-La siguiente inspección usa ese índice por defecto y no necesita reabrir los 10k+ DICOM. Si el árbol DICOM cambió después del último índice, fuerza una reconstrucción:
-
-```bash
-docker compose exec fastapi \
-  python -m dataset_pipeline.inspect \
-  --datasets cbis_ddsm \
-  --force-dicom-index
-```
-
-`inspect` ahora reporta además `full_mammogram_images`, `cropped_images`, `roi_masks`, `other_dicom_images`, `selected_full_view_images` y `complete_study_ground_truth_counts`.
-
-
-## v0.16 — integración CBIS-DDSM→GMIC, health logs y operación documentada
-
-- Corrige la incompatibilidad de semántica de división entera de GMIC al ejecutar el commit upstream fijado con PyTorch 2.7.1. `src/utilities/tools.py` conserva el cociente/remainder entero histórico mediante `torch.div(..., rounding_mode="floor")`; no se elimina el assert ni se cambian arquitectura, pesos, saliency maps o función de selección de ROI.
-- `GMIC gpu_compatibility.build_revision=2` obliga a reconstruir una sola vez la imagen Blackwell existente y a invalidar el probe previo, de modo que la workstation deba repetir `gpu_probe` sobre la imagen realmente corregida. NYU/GLAM permanecen en revisión 1 y no se reconstruyen por este cambio.
-- Uvicorn registra el primer `/health`, el primer fallo y la primera recuperación; los `200 OK` repetidos del mismo estado se suprimen. Otros access logs no se filtran.
-- `VERSION` queda copiado dentro de `/app/VERSION` y `/runner/VERSION`; `/health` y `/doctor` usan la versión real `0.16.0`.
-- `.env.example` conserva exactamente la configuración de tres GPUs validada en la RTX 5060 Ti.
-- Este README centraliza los comandos Docker usados y documenta efectos/expectativas, incluyendo la semántica no destructiva de `prepare`.
-
-
-## v0.17 — validación GPU integrada y parametrizada
-
-Se agrega un único comando para validar la revisión GPU vigente de uno, varios o todos los modelos:
-
-```bash
-docker compose exec fastapi \
-  python -m model_tools.validate_gpu \
-  --models all
-```
-
-También puede ejecutarse un subconjunto:
-
-```bash
-docker compose exec fastapi \
-  python -m model_tools.validate_gpu \
-  --models gmic nyu
-```
-
-El flujo siempre ejecuta por fases: (1) `ensure_gpu` de todos los modelos seleccionados; (2) `gpu_probe` de los runtimes que quedaron listos; (3) smoke test upstream de los que pasaron el probe. `ensure_gpu` es idempotente: reconstruye solo cuando falta la imagen o cambia `gpu_compatibility.build_revision`. `--force-rebuild` permite reconstruir explícitamente todos los seleccionados.
-
-Por seguridad, el smoke test integrado exige que cada modelo seleccionado esté configurado con `<MODEL>_DEVICE=gpu`; de lo contrario lo marca `SKIPPED/FAILED` para evitar presentar como validación GPU un smoke test que en realidad se ejecutó en CPU. Cada corrida genera evidencia JSON en `workspace/output/model_validation/`.
-
-
-## v0.18 — contrato de etiquetas GMIC con datasets reales
-
-La prueba CBIS-DDSM de v0.17 confirmó que GMIC ya supera el `forward()` que fallaba por aritmética de índices. El siguiente fallo ocurrió después de inferencia al intentar copiar `left_benign` desde `cancer_label`.
-
-El batch canónico del prototipo, alineado con el metarepository, conserva `left_malignant` y `right_malignant`. v0.18 no inventa una etiqueta benigna complementaria: el runtime GMIC registra `NaN` únicamente para `benign_label` cuando esa verdad de referencia independiente no está disponible. Los `benign_pred` y `malignant_pred` del modelo no cambian.
-
-Para migrar desde v0.17 no se repite la preparación CBIS-DDSM. Después de reconstruir los servicios de aplicación, ejecute `./scripts/validate-models.sh gmic`; el cambio de `build_revision` reconstruye solo GMIC, hace GPU probe y smoke test.
-
-## v0.19 — corrección del estado de ejecución real
-
-La prueba de 5 estudios CBIS-DDSM en v0.18 demostró que GMIC completaba inferencia, escribía su CSV y generaba 20 artefactos XAI, pero el pipeline lo marcaba como fallido porque la respuesta `/run` terminaba con `status=READY`. La causa era una colisión de metadata: `READY` describe que la imagen del modelo está disponible, mientras que la operación real debe devolver `SUCCESS` después de verificar el CSV.
-
-v0.19 corrige únicamente esa precedencia de estado. No cambia GMIC/NYU/GLAM, checkpoints, pesos, build revisions, datasets ni Soft Voting. Por ello, al migrar desde v0.18 **no es necesario reconstruir modelos ni repetir `download`, `inspect` o `prepare`**; basta reconstruir los servicios de aplicación y repetir el normal test.
-
-
-## v0.20 — GLAM dataset contract, isolation and stronger integration guards
-
-La prueba real de v0.19 confirmó que GMIC y NYU completan los 5 estudios CBIS-DDSM; GLAM falló únicamente al copiar una etiqueta opcional `left_benign` después del forward. v0.20 aplica a GLAM la misma política científica ya validada para GMIC: la etiqueta maligna continúa siendo obligatoria y una etiqueta benigna independiente ausente se representa como `NaN`, nunca como `1-malignant`. `GLAM build_revision=2` fuerza una única reconstrucción del runtime GLAM.
-
-Antes de empaquetar se revisó además el flujo completo y se corrigieron dos riesgos de integración que todavía no habían producido un traceback: (1) cada modelo usa ahora un directorio `preprocessed/<model>/` separado, evitando que XAI de GMIC sea reportado como XAI de NYU/GLAM; (2) GMIC/GLAM se relacionan con el `study_id` original mediante un `study_key` sanitizado explícito y validado, en lugar de asumir que el orden de `groupby` coincide con el manifest. Se detectan colisiones de IDs sanitizados antes de inferencia. En ejecución por chunks, XAI y métricas de recursos se agregan también al directorio raíz de la corrida.
-
-El Model Runner escribe ahora a stdout eventos operativos de alto valor (`MODEL_RUN_STARTED`, lock GPU, contenedor temporal, comando de modelo, éxito/fallo y métricas), además de conservar `workspace/logs/model_runner.jsonl`. Los healthchecks repetitivos continúan suprimidos por transición de estado.
-
-
-## v0.21 — sampling reproducible, métricas explicables y conteos inequívocos
-
-v0.20 completó por primera vez 5 estudios CBIS-DDSM reales con GMIC + NYU + GLAM + Soft Voting en aproximadamente 3m52s. Como el comportamiento legacy tomaba los primeros N registros, los cinco casos fueron benignos y Sensitivity/ROC-AUC quedaron correctamente no disponibles. v0.21 incorpora sampling reproducible (`stratified` y `balanced`), conserva los `study_id` seleccionados, explica métricas `null`, registra `processed_studies`/`processed_images`/`overall_elapsed_seconds` y renombra las observaciones del monitor de recursos a `monitoring_samples`. No cambia modelos, pesos, checkpoints, datasets ni Soft Voting.
-
-## v0.22 — análisis de scores, thresholds adaptativos y aislamiento del Final Test Set
-
-La corrida real v0.21 de 10 estudios balanceados completó 40 mamografías en ~7m22s, pero el baseline threshold 0.50 dejó 5/5 malignos como FN y produjo ROC-AUC 0.36. v0.22 no cambia ningún modelo. Añade análisis CPU de scores cacheados, reporta AUC por modelo/correlaciones/distribuciones y reemplaza la grilla experimental fija 0.40-0.60 por cinco quantiles label-independent del Configuration Set para cada peso. El Final Test Set permanece sin inferencia hasta freeze y su cache se reutiliza si `final_evaluation` se ejecuta nuevamente.
-
-
-## v0.23 — métricas de operación y selección balanceada
-
-v0.23 mantiene intactos GMIC, NYU y GLAM. Añade Specificity, PPV, NPV, FPR, Accuracy y Balanced Accuracy a la evaluación threshold-dependent; corrige `threshold_source` para distinguir análisis diagnóstico de Configuration Set; y reemplaza el selector v0.22 `min FN → Sensitivity → FP` por `ROC-AUC por pesos → Balanced Accuracy por threshold → Sensitivity → Specificity/FP`. Esto evita premiar automáticamente thresholds casi-all-positive. El aislamiento **Configuration Set → freeze → Final Test Set** se conserva sin cambios.
-
-## v0.24 — auditoría de procedencia de scores (CPU, sin reinferencia)
-
-Antes de ejecutar los 105 estudios, audite el run diagnóstico existente:
-
-```bash
-docker compose exec fastapi python -m experiments.score_provenance \
-  --run-dir /workspace/output/normal_tests/normal-20260815T195006Z
-```
-
-La auditoría reconstruye score por vista/mama/estudio, valida lateralidad y compara ROC-AUC breast-level vs study-level sin cambiar modelos, pesos, threshold ni agregación.
-
-### v0.24.2 — compatibilidad con `normal_test` chunked
-
-`score_provenance` descubre automáticamente los dos layouts reales del pipeline: ejecución directa en `<run>/model_batch/` y ejecución con `max_runtime_minutes` en `<run>/chunks/<NNNN>/model_batch/`. En modo chunked combina todos los batches, preserva el orden de NYU mediante `study_order.csv` o el `raw_model_predictions.csv` local al chunk y registra la procedencia exacta en el reporte de auditoría.
-
-
-### v0.25.0 — diagnóstico de fidelidad de entrada y agregación breast-aware
-
-Antes de ejecutar el Configuration Set completo, v0.25 agrega dos diagnósticos CPU-only:
-
-```bash
-docker compose exec fastapi python -m experiments.input_fidelity --run-dir <normal-run>
-```
-
-Audita contrato 16-bit PNG, metadata DICOM relevante para presentación y metadata producida por el crop/optimal-center oficial de GMIC/NYU/GLAM (`distance_from_starting_side`, `best_center`). No modifica imágenes ni ejecuta inferencia.
-
-```bash
-docker compose exec fastapi python -m experiments.breast_ensemble_analysis --breast-level-scores <score-provenance>/breast_level_scores.csv
-```
-
-Compara, sin cambiar producción, la agregación actual `max por modelo -> vote` contra `vote por mama -> max entre mamas`. Ambos resultados son diagnósticos y no elegibles para freeze.
-
-### v0.26.0 — contrafactual dirigido de orientación
-
-v0.25 confirmó 40/40 PNG 16-bit grayscale y 40/40 DICOM sin metadata VOI/Window/Rescale que requiera revisión, pero localizó `distance_from_starting_side != 0` en las cuatro vistas de estudios concretos. El upstream NYU/GMIC documenta esa señal como útil para detectar un posible `horizontal_flip` incorrecto según el dataset.
-
-v0.26 ejecuta una prueba dirigida únicamente sobre estudios con las 4 vistas afectadas. No modifica el dataset ni el run original: crea un batch diagnóstico, invierte solo `horizontal_flip`, reejecuta GMIC/NYU/GLAM para esos estudios y compara la geometría del preprocessing y los scores.
-
-```bash
-docker compose exec fastapi python -m experiments.orientation_counterfactual \
-  --run-dir /workspace/output/normal_tests/normal-20260815T195006Z
-```
-
-La decisión de orientación se basa primero en la evidencia geométrica upstream (`distance_from_starting_side`); cualquier cambio de ROC-AUC se registra solo como impacto secundario/post-hoc y no es elegible para freeze.
-
-
-## v0.27 automatic orientation resolution
-
-Before classifier inference, v0.27 runs the pinned NYU crop + optimal-center preprocessing only (no classifier) as a label-independent orientation preflight. A study is considered for correction only when all four views have non-zero `distance_from_starting_side`; the study-level `horizontal_flip` toggle is accepted only when the counterfactual makes all four distances zero. Ground truth, model scores and AUC are not used. Evidence is persisted under `orientation_resolution/`. The same fixed rule is applied to Configuration and, only after freeze, Final Test inputs.
-
-
-## v0.27.1 hotfix
-
-The label-independent NYU `PREPROCESS_ONLY` endpoint now exports the upstream repository root (`/home/bcc/breast_cancer_classifier`) in `PYTHONPATH` before invoking `src/cropping/crop_mammogram.py` and `src/optimal_centers/get_optimal_centers.py` directly. This follows the upstream NYU requirement for individual-script execution and fixes the v0.27.0 `ModuleNotFoundError: No module named 'src'` seen before orientation preprocessing began. No model weights, images, labels, orientation policy, ensemble weights, thresholds, or aggregation rules are changed.
-
-## v0.28 upstream reference runtime validation
-
-After CBIS-DDSM input fidelity, aggregation and orientation diagnostics, v0.28 adds a separate runtime-reproduction gate using the official four-exam sample bundled by the NYU mammography metarepository. Run:
-
-```bash
-docker compose exec fastapi python -m experiments.upstream_reference_validation
-```
-
-The command runs the existing Blackwell GMIC/NYU/GLAM images on `sample_data/`, computes image/breast ROC-AUC and AUPRC using the metarepository label contract, and compares them with the reproduction references published upstream. It does not use CBIS-DDSM, ensemble weights or thresholds and is not eligible for freeze.
-
-
-## v0.28.2 GLAM runtime differential
-
-When the official upstream reference validation passes GMIC/NYU but fails GLAM, run `python -m experiments.glam_runtime_differential`. It executes the pinned upstream GLAM PyTorch 1.1 runtime on CPU and the Blackwell PyTorch 2.7/CUDA 12.8 runtime on the same official 4-exam sample, then compares raw image scores, ordering, AUROC and AUPRC. The legacy path changes only the matplotlib backend from TkAgg to Agg for headless execution; it does not alter model architecture, checkpoint or intended inference semantics.
-
-
-## v0.29.0 — CMMD adapter + adquisición manual estricta
-
-v0.29.0 incorpora `cmmd` como dataset nativo y elimina la adquisición automática de metadata CBIS-DDSM. Los cuatro CSV de CBIS y `CMMD_clinicaldata_revision.xlsx` se colocan manualmente; el proyecto no usa URLs ni `urlopen` para descargar datasets.
-
-Hallazgos de preflight CMMD usados para diseñar el adapter (descarga TCIA auditada el 16-08-2026):
-
-- 1,775 pacientes / 1,775 estudios / 5,202 DICOM.
-- 949 pacientes con 2 imágenes y 826 con 4 imágenes.
-- `ViewPosition` vacío; CC/MLO se resuelve por `ViewCodeSequence.CodeValue`: `399162004=CC`, `399368009=MLO`.
-- `ImageLaterality` resuelve L/R.
-- 5,200 imágenes con `BitsStored=8`; dos imágenes de `D1-1343` usan 16 bits y pertenecen al grupo no four-view observado.
-- El XLSX tiene 1,872 filas para 1,775 pacientes; 97 IDs tienen dos filas bilaterales y 30 tienen una mama benigna y la otra maligna. A nivel estudio, `MALIGNANT` significa al menos una mama explícitamente maligna.
-- Entre los 826 four-view: 81 son D1 y 745 D2. El preflight observado produjo D1=61 benignos, 2 malignos consistentes y 18 bilaterales mixtos; D2=733 malignos consistentes y 12 bilaterales mixtos.
-
-### Política de benchmark CMMD
-
-La clave `cmmd` **no mezcla D1 y D2 como benchmark binario**. D2 es un cohort de malignidad/subtipos y usar los 826 four-view juntos haría que clase y cohort estuvieran fuertemente confundidos. El manifiesto canónico de `cmmd` se limita a **CMMD1/D1, cuatro vistas exactas y labels clínicos explícitos para ambas mamas**. Los D2 four-view se conservan en `cmmd_nonbenchmark_four_view.csv` para análisis posterior de dominio/malignidad, sin entrar al benchmark binario.
-
-Archivos esperados manualmente:
-
-```text
-workspace/datasets/raw/cmmd/
-├── ... árbol DICOM TCIA ...
-└── metadata/
-    └── CMMD_clinicaldata_revision.xlsx
-```
-
-Inspección limpia:
-
-```bash
-docker compose exec fastapi \
-  python -m dataset_pipeline.inspect \
-  --datasets cmmd \
-  --force-dicom-index
-```
-
-Preparación:
-
-```bash
-docker compose exec fastapi \
-  python -m dataset_pipeline.prepare \
-  --datasets cmmd
-```
-
-Primera inferencia permitida: diagnóstica, `10` estudios balanceados, `seed=42`; no es elegible para freeze.
-
-## v0.29.1 — comparación de escala multi-dataset
-
-`input_scale_comparison` deja de asumir CBIS-DDSM y detecta `dataset_source` desde el run seleccionado. Permite comparar CMMD (y futuros adapters) contra el sample oficial antes/después del crop NYU sin ground truth ni inferencia. No modifica normalización, pesos, threshold ni datasets.
-
-## v0.29.2 — contrafactual de presentación DICOM
-
-v0.29.2 añade un único diagnóstico final de fidelidad de presentación para los DICOM ya inspeccionados. Compara tres ramas sin usar labels, scores o clasificadores:
-
-1. `current_adapter`: conversión productiva actual a PNG 16-bit.
-2. `modality_lut`: aplica Modality LUT/Rescale antes de la presentación.
-3. `voi_presentation`: además aplica VOI LUT o `WindowCenter`/`WindowWidth` con `VOILUTFunction` cuando exista.
-
-Ejecutar sobre un run diagnóstico existente:
-
-```bash
-./scripts/audit-dicom-presentation.sh \
-  /workspace/output/normal_tests/normal-20260816T054908Z
-```
-
-El comando escribe `dicom_presentation_report.md`, `dicom_presentation_summary.json` y CSVs bajo `workspace/output/analyses/dicom-presentation-<timestamp>/`. Por defecto **no persiste copias transformadas de las imágenes**; `--write-images` es opcional para inspección visual. El resultado no puede usarse para elegir una rama por AUC ni para congelar pesos/thresholds.
-
-Este release también alinea la metadata de versión (`VERSION`, `pyproject.toml`, `mammography_agent.__version__` y Model Runner API) en `0.30.0`.
-
-## v0.30.0 — RSNA adapter, required-four-view policy and compressed DICOM support
-
-`rsna` is now a native dataset key. The adapter discovers the manually acquired `train.csv` + `train_images/` layout under `/workspace/datasets/raw/rsna/` (including the observed nested `/workspace/datasets/raw/rsna/rsna/` layout), never downloads data, and keeps raw files immutable.
-
-The primary ensemble contract is `RSNA_REQUIRED_FOUR_VIEWS_V1`: at least one L_CC, R_CC, L_MLO and R_MLO is required. When a canonical view has multiple images, one is selected reproducibly by `DETERMINISTIC_LABEL_BLIND_SHA256_V1`; discarded repeats and non-standard views remain in audit manifests. Ground truth comes only from `train.csv:cancer`, with study malignancy defined as either breast malignant.
-
-Inspect before any pixel conversion:
+**Tiempo estimado:** aproximadamente 15–30 minutos para indexar ~54 mil DICOM por primera vez en SSD; reutilizar cache es mucho más rápido.
 
 ```bash
 docker compose exec fastapi \
@@ -1236,31 +1154,199 @@ docker compose exec fastapi \
   --force-dicom-index
 ```
 
-Expected artifacts include `rsna_dicom_index.csv`, `rsna_selected_views.csv`, `rsna_all_required_four_view.csv`, `rsna_unselected_duplicate_views.csv`, `rsna_nonstandard_views.csv`, `rsna_incomplete_studies.csv`, `rsna_label_conflicts.csv` and the generated `source_manifest.csv`.
+Validar:
 
-The application image now installs the pydicom plugins required for the two transfer syntaxes observed during RSNA preflight: JPEG Lossless SV1 and JPEG 2000 Lossless.
+- DICOM indexados y válidos;
+- pacientes;
+- cuatro vistas requeridas;
+- duplicados seleccionados/no seleccionados;
+- views no estándar;
+- conflictos de labels;
+- `source_manifest.csv`.
 
-## v0.30.1 — formal RSNA population split and imbalanced-dataset metrics
+No usar `--force-dicom-index` rutinariamente cuando el índice ya es válido.
 
-v0.30.1 reuses the RSNA preparation from v0.30.0. It does not rerun `dataset_pipeline.prepare` and does not change any model checkpoint or preprocessing contract.
+## 10.7 Preparar RSNA
 
-The formal RSNA experiment is now explicit about population accounting. The prepared dataset has 11,913 studies, but 10 were already observed in the diagnostic run and are frozen in `datasets/manifests/rsna_diagnostic_exclusion_v1.csv`. Those 10 are removed before the formal split. Therefore, **100% of the formal experimental pool** is 11,903 still-unobserved studies, not the original 11,913.
+Ejecutar únicamente si todavía no existe el dataset preparado o si el raw dataset cambió.
 
-The default formal split is deterministic, patient-level and stratified:
+**Tiempo observado en la preparación completa validada:** aproximadamente **21 h 38 min**, CPU, para `11,913` estudios / `47,652` PNG16 y ~315 GB.
 
-```text
-11,913 prepared RSNA
-    - 10 diagnostic / already observed
-    = 11,903 formal pool
-        ├── 30% Configuration Set: 3,570
-        │      ├── 3,426 BENIGN
-        │      └──   144 MALIGNANT
-        └── 70% Final Test:       8,333
-               ├── 7,996 BENIGN
-               └──   337 MALIGNANT
+```bash
+docker compose exec fastapi \
+  python -m dataset_pipeline.prepare \
+  --datasets rsna
 ```
 
-The exact default command is:
+El resultado esperado incluye:
+
+```text
+workspace/datasets/manifests/rsna.csv
+workspace/datasets/processed/rsna/...
+```
+
+Si el workspace ya contiene la preparación validada, no es necesario repetir este paso antes de cada experimento.
+
+## 10.8 Prueba diagnóstica de 10 estudios
+
+Para comprobar end-to-end ambas clases con sampling determinístico:
+
+**Tiempo observado en la workstation validada:** ~978 s, aproximadamente **16.3 min**, para 10 estudios/40 imágenes.
+
+```bash
+docker compose exec fastapi \
+  python -m tests_flow.normal \
+  --datasets rsna \
+  --samples 10 \
+  --sampling balanced \
+  --seed 42
+```
+
+Esta prueba es diagnóstica. No debe utilizarse para elegir el threshold o los pesos formales.
+
+Artefactos principales:
+
+```text
+workspace/output/normal_tests/<NORMAL_RUN_ID>/
+├── raw_model_predictions.csv
+├── predictions.csv
+├── metrics.json
+├── run_summary.json
+├── selected_studies_before_orientation.csv
+├── selected_studies.csv
+├── orientation_resolution/
+├── resource_metrics.csv
+└── normal_test_report.md
+```
+
+Para el Diagnostic Set RSNA históricamente congelado, el manifest de exclusión formal debe existir en:
+
+```text
+workspace/datasets/manifests/rsna_diagnostic_exclusion_v1.csv
+```
+
+No sobrescribir ese archivo después de observar resultados.
+
+## 10.9 Analizar scores del Normal Test
+
+**Tiempo estimado:** segundos a menos de 1 minuto; CPU, sin reinferencia.
+
+```bash
+./scripts/analyze-scores.sh \
+  /workspace/output/normal_tests/<NORMAL_RUN_ID>/raw_model_predictions.csv
+```
+
+Revisar:
+
+- `score_summary.json`;
+- `model_metrics.csv`;
+- `score_distribution.csv`;
+- `roc_points.csv`;
+- `diagnostic_configurations.csv`;
+- `diagnostic_ranking.csv`;
+- `score_analysis_report.md`.
+
+Los candidatos de este análisis llevan carácter diagnóstico y no son elegibles para freeze.
+
+## 10.10 Auditar procedencia de scores
+
+**Tiempo estimado:** segundos a pocos minutos; no vuelve a ejecutar los tres clasificadores.
+
+```bash
+./scripts/audit-score-provenance.sh \
+  /workspace/output/normal_tests/<NORMAL_RUN_ID>
+```
+
+Objetivo: demostrar de qué output nativo proviene cada score canónico y validar orden/agregación.
+
+## 10.11 Auditar orientación
+
+### Preflight label-blind
+
+**Tiempo estimado:** pocos minutos; depende del preprocessing requerido.
+
+```bash
+docker compose exec fastapi \
+  python -m experiments.orientation_preflight \
+  --run-dir /workspace/output/normal_tests/<NORMAL_RUN_ID>
+```
+
+### Contrafactual dirigido
+
+Ejecutarlo cuando el preflight identifica estudios que requieren análisis adicional.
+
+**Tiempo estimado:** minutos a decenas de minutos según número de sospechosos.
+
+```bash
+./scripts/audit-orientation-counterfactual.sh \
+  /workspace/output/normal_tests/<NORMAL_RUN_ID>
+```
+
+No cambiar la política formal utilizando únicamente un resultado post hoc del Diagnostic Set.
+
+## 10.12 Auditar fidelidad y escala de inputs
+
+### Fidelidad
+
+**Tiempo estimado:** pocos minutos; no ejecuta clasificación completa.
+
+```bash
+docker compose exec fastapi \
+  python -m experiments.input_fidelity \
+  --run-dir /workspace/output/normal_tests/<NORMAL_RUN_ID>
+```
+
+### Escala de intensidad
+
+**Tiempo estimado:** pocos minutos a decenas de minutos según preprocessing/crop.
+
+```bash
+./scripts/compare-input-scale.sh \
+  /workspace/output/normal_tests/<NORMAL_RUN_ID>
+```
+
+### Presentación DICOM
+
+**Tiempo estimado:** pocos minutos; sin clasificación.
+
+```bash
+./scripts/audit-dicom-presentation.sh \
+  /workspace/output/normal_tests/<NORMAL_RUN_ID>
+```
+
+Estas auditorías validan implementación; no seleccionan pesos/threshold.
+
+## 10.13 Validar referencia upstream
+
+Esta validación se recomienda al preparar una workstation nueva o cuando cambió un runtime de modelo.
+
+**Tiempo estimado:** 5–20 minutos con imágenes GPU ya disponibles; puede ser mayor si debe construirlas.
+
+```bash
+docker compose exec fastapi \
+  python -m experiments.upstream_reference_validation
+```
+
+Ejecuta los tres modelos sobre el sample oficial del metarepositorio y compara métricas publicadas.
+
+## 10.14 Validar diferencial GLAM legacy vs Blackwell
+
+Recomendado cuando cambia el Dockerfile/runtime GLAM, no en cada experimento.
+
+**Tiempo estimado:** 5–20 minutos con imágenes preparadas.
+
+```bash
+docker compose exec fastapi \
+  python -m experiments.glam_runtime_differential
+```
+
+El objetivo es comparar preservación de scores/ordenamiento, no maximizar AUC.
+
+## 10.15 Abrir el experimento formal sobre el 100% del pool
+
+No pasar `--samples`. El comando parte del pool formal completo después de exclusiones.
+
+**Tiempo estimado:** ejecución larga, potencialmente de muchas horas o varios días según GPU/I/O. El diseño resumible evita perder chunks completados.
 
 ```bash
 docker compose exec fastapi \
@@ -1270,138 +1356,478 @@ docker compose exec fastapi \
   --seed 42
 ```
 
-This command infers **only the Configuration Set**. It writes the complete split evidence before GPU inference, including `formal_pool_manifest.csv`, `formal_exclusions_applied.csv`, `split_summary.json`, `configuration_set_manifest.csv` and the reserved `final_test_manifest.csv`. After configuration selection:
+Este comando:
+
+1. carga los `11,913` estudios preparados;
+2. excluye los `10` diagnósticos congelados;
+3. obtiene `11,903` estudios formales;
+4. congela el split 30/70;
+5. guarda el Final Test sin inferir;
+6. resuelve orientación del Configuration Set;
+7. infiere GMIC → NYU → GLAM por chunks;
+8. genera scores del Configuration Set;
+9. evalúa **80 configuraciones** según el `config/experiments.yaml` actual;
+10. genera ranking y `best_configuration.json`.
+
+### Monitorear progreso
+
+**Tiempo estimado por consulta:** menos de 5 segundos.
+
+```bash
+cat workspace/output/experiments/<EXPERIMENT_ID>/configuration_orientation/orientation_chunk_progress.json
+```
+
+**Tiempo estimado por consulta:** menos de 5 segundos.
+
+```bash
+cat workspace/output/experiments/<EXPERIMENT_ID>/configuration_inference/chunk_progress.json
+```
+
+Para logs en vivo:
+
+```bash
+./scripts/logs.sh
+```
+
+### Reanudar Configuration si se interrumpe
+
+Usar **el mismo `EXPERIMENT_ID`**.
+
+**Tiempo estimado:** depende de los chunks pendientes; los chunks válidos previos se reutilizan.
+
+```bash
+docker compose exec fastapi \
+  python -m experiments.run \
+  --datasets rsna \
+  --configuration-ratio 0.30 \
+  --seed 42 \
+  --resume-experiment <EXPERIMENT_ID>
+```
+
+No crear un experimento nuevo para reanudar el mismo split.
+
+## 10.16 Revisar resultados del Configuration Set
+
+Antes del freeze revisar como mínimo:
+
+```text
+workspace/output/experiments/<EXPERIMENT_ID>/
+├── experiment_plan.json
+├── split_summary.json
+├── formal_exclusions_applied.csv
+├── configuration_set_manifest.csv
+├── final_test_manifest.csv
+├── configuration_set_predictions.csv
+├── configuration_score_analysis/
+├── all_configurations.csv
+├── ranking.csv
+├── best_configuration.json
+└── configuration_report.md
+```
+
+Verificaciones obligatorias:
+
+- `patient_overlap = 0`;
+- `study_overlap = 0`;
+- cobertura formal = `1.0`;
+- Final Test todavía no inferido;
+- hashes de manifests presentes;
+- clase maligna representada en Configuration y Final;
+- scores finitos y semántica consistente;
+- ranking coherente con la política configurada.
+
+### Política de selección actual
+
+1. mejor ROC-AUC por combinación de pesos;
+2. mayor Balanced Accuracy para el threshold;
+3. mayor Sensitivity;
+4. mayor Specificity / menor FP;
+5. menor distancia al baseline.
+
+AUPRC y F1 se reportan como evidencia pero en esta versión no sustituyen la política de selección.
+
+## 10.17 Congelar la configuración seleccionada
+
+Solo después de aprobar la revisión de Configuration.
+
+**Tiempo estimado:** menos de 5 segundos.
 
 ```bash
 docker compose exec fastapi \
   python -m experiments.freeze \
-  --experiment <ID>
+  --experiment <EXPERIMENT_ID>
 ```
 
-Only after freeze:
+Resultado:
+
+```text
+workspace/output/experiments/<EXPERIMENT_ID>/frozen_configuration.yaml
+```
+
+El archivo no puede sobrescribirse silenciosamente con contenido diferente.
+
+## 10.18 Ejecutar Final Test
+
+**Tiempo estimado:** ejecución muy larga, potencialmente mayor que Configuration porque contiene ~70% del pool formal. Puede requerir muchas horas o varios días. Reejecutar el mismo comando permite reutilizar cache/chunks válidos.
 
 ```bash
 docker compose exec fastapi \
   python -m experiments.final_evaluation \
-  --experiment <ID>
+  --experiment <EXPERIMENT_ID>
 ```
 
-v0.30.1 also adds `average_precision`/`auprc`, F1 and precision-recall points. `final_model_comparison.csv` compares GMIC, NYU, GLAM, the uniform baseline and the frozen selected ensemble. ROC-AUC and AUPRC are the threshold-independent comparisons; threshold-dependent metrics for individual models at 0.50 are explicitly labeled as reference values, not calibrated clinical operating points.
+El Final Test usa **exactamente** la configuración congelada. No vuelve a buscar pesos ni threshold.
 
-The weight/threshold selection policy remains unchanged in this patch. AUPRC and F1 are reported, but they are not introduced post hoc as new optimization objectives. Any future change to the selection objective must be versioned before opening the Final Test.
+## 10.19 Revisar resultados finales
 
+Archivos principales:
 
+```text
+workspace/output/experiments/<EXPERIMENT_ID>/
+├── final_predictions.csv
+├── final_metrics.json
+├── final_model_comparison.csv
+├── final_report.md
+└── final_score_analysis/
+```
 
+Revisar especialmente:
 
+- ROC-AUC;
+- AUPRC / Average Precision;
+- Sensitivity / Recall;
+- Specificity;
+- Balanced Accuracy;
+- F1;
+- PPV;
+- NPV;
+- TN / FP / FN / TP;
+- selected ensemble vs uniform baseline;
+- GMIC vs NYU vs GLAM individuales;
+- ausencia de reoptimización post-freeze.
 
-## v0.32.2 — tiempos observados, control de concurrencia y acceso a artefactos Web
+La interpretación final debe hacerse sobre el Final Test reservado. Los 10 casos diagnósticos no se incorporan para mejorar las métricas formales.
 
-v0.32.2 mantiene el pipeline batch y sus configuraciones sin cambios funcionales. La ruta Web añade medición wall-clock por etapa/modelo, expone la preparación de entradas como etapa independiente, bloquea el botón de evaluación durante una solicitud activa, contrae por defecto los resultados individuales de GMIC/NYU/GLAM y elimina del sidebar el indicador genérico de “trazabilidad de evidencias”. El detalle final muestra `run_id`, bucket y prefijo MinIO y puede enlazar a la consola mediante `MINIO_CONSOLE_PUBLIC_URL`.
+---
 
-## v0.32.1 — seguimiento de inferencia Web y compatibilidad CPU
+# 11. Ejecución y configuración del flujo Web
 
-v0.32.1 corrige la compatibilidad de la ruta Web CPU con los runners históricos de GMIC/GLAM y mejora la observabilidad de la evaluación unitaria. La ruta Web mantiene el carácter label-blind: no recibe ground truth; para el contrato de salida del runner histórico se agregan únicamente `left_benign/right_benign=NaN` al `data.pkl` Web como metadata técnica opcional posterior al forward pass. El `data.pkl` canónico utilizado por batch permanece sin esas claves.
+## 11.1 Levantar servicios
 
-La interfaz oculta los controles de despliegue propios de Streamlit, presenta MinIO/PostgreSQL como capacidades de trazabilidad y no como infraestructura aislada, desplaza el foco hacia el progreso al iniciar una evaluación y consulta `/single-cases/progress/{run_id}` mientras la petición está en curso. El progreso informa preparación, orientación, GMIC, NYU/DMV-CNN, GLAM, integración del ensemble y persistencia, con tiempo transcurrido y tiempos por modelo cuando están disponibles.
+Si todavía no están levantados:
 
-El mecanismo de progreso y la compatibilidad Web son opt-in. Los entrypoints batch continúan llamando `_infer_three()` sin `device`, `web_label_blind_compat` ni `progress_callback`; por tanto conservan el contrato histórico.
-
-## v0.32.0 — configuración Web separada del flujo batch
-
-v0.32.0 amplía la ruta Web sin cambiar la configuración experimental del batch. El tab **Estado del sistema** se reemplaza por **Configuración y estado**, que agrupa el dispositivo de inferencia Web, los pesos del ensemble, la disponibilidad de modelos y los servicios de persistencia. La pantalla principal queda reservada para carga, verificación del estudio y ejecución inferencial.
-
-La Web admite `inference_device=cpu|gpu` por petición. `CPU` es el valor predeterminado (`WEB_INFERENCE_DEVICE=cpu`) y no requiere `gpu_probe`. Si se selecciona `GPU`, el Model Runner conserva sus controles de imagen GPU y probe vigente. Esta selección no escribe variables de entorno ni archivos YAML.
-
-Para evitar duplicar lógica, `_infer_three()` incorpora un argumento opcional `device=None`. Los entrypoints batch continúan llamándolo sin override; cuando `device is None`, la llamada a `run_model()` mantiene exactamente la firma histórica. Solo la ruta Web envía `device=cpu` o `device=gpu`.
-
-La configuración efectiva (`inference_device`, pesos y fuente de pesos) queda registrada en el resultado Web y en `web_inference_runs`.
-
-## v0.31.0 — configuración Web por caso y preflight de runtimes
-
-v0.31.0 es una ampliación funcional compatible de la ruta Web. Añade pesos de ensemble configurables por evaluación unitaria, mantiene el umbral base sin edición, registra la configuración efectiva y los tiempos de ejecución, y valida la disponibilidad de runtimes GPU antes de habilitar la inferencia. Los overrides Web no modifican archivos YAML ni los entrypoints batch.
-
-La ruta Web distingue dos fuentes de pesos:
-
-- `BASELINE`: `config/ensemble.yaml -> baseline.weights`.
-- `WEB_OVERRIDE`: GMIC/NYU/GLAM recibidos únicamente en `/single-cases/run`, con valores [0,1] y suma exacta 1.0.
-
-Si un runtime GPU no dispone de probe vigente, valide la workstation antes de inferir:
+**Tiempo estimado:** 2–15 minutos según cache; primera construcción puede tardar más.
 
 ```bash
-docker compose exec fastapi python -m model_tools.validate_gpu --models all
+docker compose up -d --build
 ```
 
-El resultado esperado es `overall_status=READY`. La operación puede construir una imagen GPU si falta o si cambió su `build_revision`; por ello no se ejecuta automáticamente desde Streamlit.
+Verificar:
 
-## v0.30.2 — chunking/checkpoint/resume para el experimento formal RSNA
-
-v0.30.2 no modifica ninguna decisión metodológica del experimento. El pool formal sigue siendo el conjunto RSNA no observado después de excluir el Diagnostic Set de 10 estudios; la partición sigue siendo 30% Configuration y 70% Final por paciente, estratificada y reproducible con seed 42.
-
-La diferencia es operacional. La orientación formal y la inferencia se procesan por defecto en chunks de 25 estudios. Dentro de cada chunk los modelos siguen siendo secuenciales: GMIC → NYU → GLAM. Cada chunk exitoso persiste `chunk_status.json` con hashes SHA-256 del input y de las predicciones. Los chunks incompletos se reinician desde el comienzo; los chunks exitosos anteriores se reutilizan después de validar identidad, orden, número de estudios y hashes.
-
-Inicio de Configuration:
+**Tiempo estimado:** menos de 10 segundos.
 
 ```bash
-docker compose exec fastapi python -m experiments.run \
-  --datasets rsna \
-  --configuration-ratio 0.30 \
-  --seed 42
+docker compose ps -a
 ```
 
-Si la ejecución se interrumpe, no se debe iniciar un experimento nuevo. Se reanuda el mismo ID:
+Abrir:
+
+```text
+http://localhost:8501
+```
+
+## 11.2 Seleccionar configuración Web
+
+Ir al tab **Configuración y estado**.
+
+### Dispositivo
+
+Elegir:
+
+- `CPU`: no requiere `gpu_probe` Web;
+- `GPU`: requiere que los runtimes GPU estén preparados y con probe vigente.
+
+Si se selecciona GPU y los modelos no están listos:
+
+**Tiempo estimado:** 5–20 minutos con imágenes disponibles; más si hay que construirlas.
 
 ```bash
-docker compose exec fastapi python -m experiments.run \
-  --datasets rsna \
-  --configuration-ratio 0.30 \
-  --seed 42 \
-  --resume-experiment experiment-YYYYMMDDTHHMMSSZ
+docker compose exec fastapi \
+  python -m model_tools.validate_gpu \
+  --models all
 ```
 
-Progreso:
+### Pesos
+
+Elegir:
+
+- **Configuración base**: usa `config/ensemble.yaml`;
+- **Configuración personalizada**: permite editar GMIC, NYU y GLAM.
+
+La suma debe ser `1.000000`.
+
+### Threshold
+
+Elegir:
+
+- **Configuración base**;
+- **Configuración personalizada** entre `0.0` y `1.0`.
+
+### Aplicar cambios
+
+Pulsar **Actualizar configuración** para guardar la selección actual en PostgreSQL y reutilizarla automáticamente en siguientes sesiones. Una modificación no guardada puede utilizarse en la evaluación actual, pero no sustituye la configuración persistida para futuras sesiones.
+
+**Restaurar configuración base** vuelve a los valores base y los persiste explícitamente.
+
+## 11.3 Cargar imágenes
+
+En **Evaluación del estudio** cargar archivos `.dcm` o `.dicom`.
+
+Requisitos:
+
+- mínimo 4 archivos;
+- máximo 20 archivos;
+- un único estudio;
+- debe poder resolverse una imagen para cada vista L-CC, R-CC, L-MLO y R-MLO.
+
+No cargar `train.csv`, labels, BIRADS ni ground truth para la inferencia Web.
+
+## 11.4 Verificar proyecciones
+
+La interfaz muestra la detección automática de cada archivo.
+
+Si todas las vistas se resuelven, el estudio queda listo.
+
+Si falta CC/MLO:
+
+1. la UI genera un preview;
+2. el usuario revisa la imagen;
+3. asigna la vista correcta;
+4. FastAPI vuelve a validar el conjunto.
+
+La lateralidad DICOM conocida se preserva; la UI no debe permitir convertir arbitrariamente una mama izquierda en derecha.
+
+## 11.5 Ejecutar evaluación
+
+Pulsar **Ejecutar evaluación**.
+
+El botón queda bloqueado durante la solicitud para impedir ejecuciones duplicadas.
+
+**Tiempo estimado:** depende de CPU/GPU y del runtime. En la workstation usada para las pruebas, un caso Web puede tardar varios minutos porque incluye preparación, tres runtimes aislados, persistencia y cleanup; usar el progreso mostrado por la UI como fuente de tiempo real.
+
+La UI muestra en vivo:
+
+- preparación;
+- orientación;
+- preparación de inputs;
+- GMIC;
+- NYU/DMV-CNN;
+- GLAM;
+- ensemble;
+- persistencia.
+
+## 11.6 Revisar el resultado Web
+
+La pantalla principal muestra:
+
+- **Clasificación:** CÁNCER / NO CÁNCER;
+- **Valor del ensemble**;
+- **Umbral aplicado**;
+- **Tiempo total**.
+
+En expanders adicionales se puede revisar:
+
+### Configuración aplicada
+
+- dispositivo;
+- origen de pesos;
+- pesos efectivos;
+- threshold y origen;
+- suma de pesos.
+
+### Resultados por modelo
+
+- GMIC score;
+- NYU / DMV-CNN score;
+- GLAM score;
+- dispersión/discordancia.
+
+### Tiempos de ejecución
+
+Tiempos wall-clock por etapa/modelo.
+
+### Preparación y orientación
+
+- vistas seleccionadas;
+- metadata de resolución;
+- política de orientación;
+- razón de la decisión.
+
+### Registro y artefactos
+
+- `run_id`;
+- estado PostgreSQL;
+- estado MinIO;
+- bucket;
+- prefijo;
+- cantidad de objetos;
+- enlace a consola MinIO.
+
+## 11.7 Consultar MinIO
+
+Con la configuración por defecto:
+
+```text
+http://localhost:9001
+```
+
+Credenciales por defecto de `.env.example`:
+
+```text
+usuario: mammography
+password: mammography_research
+```
+
+En ambientes reales, cambiar las credenciales por defecto.
+
+Navegar a:
+
+```text
+bucket: mammography-web
+prefix: runs/<run_id>/
+```
+
+## 11.8 Consultar logs por run_id
+
+**Tiempo estimado:** segundos.
 
 ```bash
-cat workspace/output/experiments/<EXPERIMENT_ID>/configuration_orientation/orientation_chunk_progress.json
-cat workspace/output/experiments/<EXPERIMENT_ID>/configuration_inference/chunk_progress.json
+./scripts/web-debug-logs.sh <run_id>
 ```
 
-El Final Test usa el mismo mecanismo de checkpoint únicamente después de `experiments.freeze`; no se crea ningún chunk de Final antes del freeze.
+Para exportar:
 
-Validación de release dentro del runtime de FastAPI:
+**Tiempo estimado:** segundos.
 
 ```bash
-docker compose exec fastapi python -m pytest -q
+./scripts/web-debug-logs.sh <run_id> run-debug.log
 ```
 
+## 11.9 Validar un caso Web contra RSNA
 
-## v0.33.0 — aislamiento de persistencia Web
+La inferencia Web debe permanecer ciega. La comparación con ground truth se hace **después** de obtener el resultado:
 
-La ruta Web utiliza `/web-scratch` como volumen temporal independiente del bind mount `workspace/`. Los DICOM cargados, previews, artefactos intermedios y directorios de ejecución Web se eliminan al terminar el caso. PostgreSQL y MinIO son las únicas capas de persistencia durable de la evaluación Web.
+1. ejecutar el caso solo con DICOM;
+2. conservar el `run_id` y scores;
+3. consultar posteriormente `source_manifest.csv` o `train.csv`;
+4. determinar TN/FP/FN/TP fuera del camino inferencial Web.
 
-El flujo batch no utiliza `WEB_SCRATCH_ROOT`, `WEB_PERSIST_LOCAL` ni el volumen `web_scratch`. Los entrypoints `experiments.run`, `experiments.final_evaluation` y `tests_flow.normal`, los adapters RSNA, `soft_voting.py` y los YAML de modelos/ensemble/experimentos permanecen sin cambios. Los helpers compartidos de `build_batch` y orientación aceptan un resolver opcional exclusivamente para Web; cuando no se proporciona, se conserva la llamada histórica y `safe_workspace_path`.
+Esto evita leakage de labels hacia el proceso de predicción.
 
+---
 
-## v0.34.0 — umbral Web configurable y observabilidad por run_id
+# 12. Configuración, persistencia y artefactos
 
-La interfaz Web permite seleccionar un umbral de decisión personalizado entre 0 y 1. El valor se transmite en `decision_threshold` únicamente en la petición de inferencia unitaria y no modifica `config/ensemble.yaml`, `config/experiments.yaml` ni ningún parámetro del flujo batch. Si no se selecciona un umbral personalizado, la Web utiliza el valor base de `config/ensemble.yaml`. El resultado registra `threshold` y `threshold_source` (`BASELINE` o `WEB_OVERRIDE`) en PostgreSQL y en `single_case_result.json`.
+## 12.1 `.env`
 
-Las evaluaciones Web emiten eventos de depuración en stdout de FastAPI y Model Runner, correlacionados por `run_id`. Se registran configuración efectiva, inicio/fin de etapas, estado y tiempo wall-clock de cada modelo, scores, ensemble, persistencia, preparación del runtime del Model Runner y tiempo total de la petición al runner. Esto no altera entradas, pesos, thresholds ni comandos del batch.
+Variables principales:
 
-Para consultar una ejecución concreta:
+| Variable | Función |
+|---|---|
+| `HOST_WORKSPACE` | Workspace persistente Batch. |
+| `GMIC_DEVICE` | Dispositivo Batch GMIC. |
+| `NYU_DEVICE` | Dispositivo Batch NYU. |
+| `GLAM_DEVICE` | Dispositivo Batch GLAM. |
+| `ALLOW_GPU` | Habilita asignación GPU desde Model Runner. |
+| `GPU_NUMBER` | GPU seleccionada. |
+| `WEB_INFERENCE_DEVICE` | Valor inicial Web si todavía no existe configuración persistida. |
+| `DATABASE_URL` | PostgreSQL. |
+| `MINIO_ENDPOINT` | Endpoint interno MinIO. |
+| `MINIO_WEB_BUCKET` | Bucket Web. |
+| `MINIO_CONSOLE_PUBLIC_URL` | URL que el navegador debe usar para abrir consola MinIO. |
+| `WEB_SCRATCH_TTL_MINUTES` | TTL de uploads Web abandonados. |
 
-```bash
-./scripts/web-debug-logs.sh web-YYYYMMDDTHHMMSSZ-xxxxxxxx
+## 12.2 `config/models.yaml`
+
+Contiene:
+
+- repositorio/metarepositorio;
+- commits upstream;
+- imágenes legacy;
+- perfiles GPU Blackwell;
+- reglas de agregación canónica;
+- metadatos de compatibilidad.
+
+## 12.3 `config/ensemble.yaml`
+
+Contiene el baseline:
+
+```yaml
+baseline:
+  weights:
+    gmic: 0.333333
+    nyu: 0.333333
+    glam: 0.333334
+  threshold: 0.50
 ```
 
-Para exportarla a un archivo:
+También define el threshold de discordancia y la regla de requerir los tres modelos.
 
-```bash
-./scripts/web-debug-logs.sh web-YYYYMMDDTHHMMSSZ-xxxxxxxx run-debug.log
-```
+## 12.4 `config/experiments.yaml`
 
+Contiene:
 
-## v0.35.0 — persistencia de la configuración Web en PostgreSQL
+- split 30/70;
+- seed;
+- 16 familias de pesos;
+- estrategia de 5 thresholds por cuantiles de scores;
+- política de selección;
+- exclusiones formales;
+- chunking/resume.
 
-La configuración interactiva de la ruta Web (dispositivo CPU/GPU, modo y valores de pesos, modo y valor del umbral) se persiste en PostgreSQL en la tabla `web_evaluation_settings`. Al actualizar desde v0.34.x, si la tabla aún no contiene una configuración activa, la API intenta migrar una sola vez la configuración de la ejecución Web exitosa más reciente almacenada en `web_inference_runs`. La interfaz consulta `/single-cases/web-settings` al iniciar y restaura la última configuración válida; los cambios válidos se guardan automáticamente mediante `PUT /single-cases/web-settings`. Esta persistencia es exclusiva de la Web: no modifica `config/ensemble.yaml`, `config/experiments.yaml`, `config/models.yaml`, las variables `GMIC_DEVICE`/`NYU_DEVICE`/`GLAM_DEVICE` ni los entrypoints batch.
+## 12.5 `config/datasets.yaml`
 
-La configuración aplicada a cada inferencia continúa registrándose además en `web_inference_runs`, de modo que cada `run_id` conserva su threshold, pesos, fuentes y dispositivo efectivos independientemente de cambios posteriores en la configuración Web activa.
+Declara adapters, rutas, políticas de adquisición, manifests y reglas específicas por dataset.
+
+---
+
+# 13. Limitaciones y reglas metodológicas
+
+1. Los resultados son de investigación y no constituyen validación clínica.
+2. No se debe elegir configuración usando el Final Test.
+3. No se debe reoptimizar después del freeze.
+4. Los 10 casos RSNA diagnósticos previamente observados deben permanecer fuera del experimento formal.
+5. La Web no debe recibir ground truth antes de inferir.
+6. Un fallo real de un modelo invalida el ensemble cuando `require_all_models_for_valid_ensemble=true`.
+7. AUC alto no implica que `threshold=0.50` sea un buen punto operativo.
+8. Los scores no están calibrados como probabilidades clínicas.
+9. Las imágenes de modelos legacy requieren validación explícita en cada nueva plataforma GPU.
+10. Los cambios de orientación, preprocessing, pesos o thresholds deben versionarse y justificarse antes de abrir Final Test.
+11. Las pruebas diagnósticas pequeñas sirven para encontrar errores de implementación, no para estimar generalización.
+12. El Batch y la Web comparten núcleo inferencial, pero su configuración y persistencia operativa están aisladas.
+
+---
+
+# 14. Documentación adicional
+
+Consultar:
+
+- `VERIFICATION.md`: evidencia de pruebas del paquete.
+- `docs/ARCHITECTURE_CHANGE_LOG.md`: evolución de arquitectura.
+- `docs/CONFIG_ADDITIONS.md`: configuraciones añadidas durante implementación.
+- `docs/MIGRATION_V0_30_1.md`: split formal RSNA y exclusión del Diagnostic Set.
+- `docs/MIGRATION_V0_30_2.md`: chunking/checkpoint/resume.
+- `docs/MIGRATION_V0_30_2_WEB_MINIO.md`: persistencia Web.
+- `docs/WEB_EVALUATION_V0_31_0.md`: pesos por caso Web.
+- `docs/WEB_EVALUATION_V0_32_1.md`: progreso/compatibilidad Web.
+- `docs/WORKSTATION_VALIDATION.md`: validación de workstation.
+- `docs/SOURCES.md`: fuentes técnicas.
+- `docs/RISK_REGISTER.md`: riesgos conocidos.
+
+## 14.1 Nota de versión 0.35.3
+
+v0.35.3 corrige la persistencia Web entre upgrades del proyecto. PostgreSQL y MinIO dejan de depender del nombre Compose derivado de la carpeta versionada mediante nombres de volumen estables. La interfaz ya no muestra los avisos rutinarios de cambios pendientes, bloqueo durante ejecución, modo CPU ni el texto genérico de aislamiento Web/Batch solicitado. Los valores editados pueden usarse en la evaluación actual; **Actualizar configuración** conserva la configuración en PostgreSQL para futuras sesiones. El proceso Batch y sus archivos de configuración permanecen sin cambios.
+
+## 14.2 Nota de versión 0.35.2
+
+v0.35.2 es una actualización **documental** del README. Reorganiza la documentación operativa alrededor de arquitectura, código, scripts, Web y Batch y convierte los diagramas del README a Mermaid. No cambia modelos, datasets, preprocessing, orientación, pesos, thresholds, reglas del experimento ni comportamiento de inferencia respecto de v0.35.1.

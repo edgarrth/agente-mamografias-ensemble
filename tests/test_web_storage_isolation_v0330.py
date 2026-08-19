@@ -78,7 +78,7 @@ def test_compose_uses_dedicated_web_scratch_volume_not_project_folder():
     assert "web_scratch:/web-scratch" in text
     assert "WEB_SCRATCH_ROOT: /web-scratch" in text
     assert "WEB_PERSIST_LOCAL: ${WEB_PERSIST_LOCAL:-false}" in text
-    assert "web_scratch: {}" in text
+    assert "name: ${WEB_SCRATCH_VOLUME_NAME:-mammography-web-scratch}" in text
 
 
 def test_batch_build_batch_call_stays_on_historical_default_resolver():

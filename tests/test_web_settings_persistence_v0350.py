@@ -95,12 +95,14 @@ def test_web_settings_put_uses_web_only_postgres_storage(monkeypatch):
     assert captured["decision_threshold"] == pytest.approx(0.02)
 
 
-def test_streamlit_hydrates_and_autosaves_web_settings():
+def test_streamlit_hydrates_and_explicitly_updates_web_settings():
     text = Path("ui/streamlit_app.py").read_text(encoding="utf-8")
     assert '"GET", "/single-cases/web-settings"' in text
     assert '"PUT", "/single-cases/web-settings"' in text
     assert '_hydrate_web_settings(persisted_web_settings, ensemble_config)' in text
-    assert 'Los cambios válidos de dispositivo, pesos y umbral se guardan automáticamente en PostgreSQL' in text
+    assert 'Actualizar configuración' in text
+    assert 'Hay cambios pendientes' not in text
+    assert 'guardan automáticamente' not in text
 
 
 def test_persistence_does_not_write_batch_configuration_files():

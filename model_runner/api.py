@@ -33,7 +33,7 @@ RESOURCE_SAMPLE_SECONDS = float(os.getenv("RESOURCE_SAMPLE_SECONDS", "2"))
 WEB_PERSIST_LOCAL = os.getenv("WEB_PERSIST_LOCAL", "false").strip().lower() in {"1", "true", "yes", "on"}
 _RUN_CONTEXT = threading.local()
 
-APP_VERSION = "0.35.0"
+APP_VERSION = "0.35.3"
 
 CONSOLE_LOG = logging.getLogger("mammography-model-runner")
 if not CONSOLE_LOG.handlers:
