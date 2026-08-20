@@ -165,7 +165,93 @@ def _formal_inference_config(chunk_size: int|None=None) -> dict:
         "chunk_size":resolved,
         "resume_enabled":bool(cfg.get("resume_enabled",True)),
         "cache_policy":str(cfg.get("cache_policy","SUCCESS_MARKER_AND_HASHES")),
+        "cleanup_successful_chunk_temporaries":bool(cfg.get("cleanup_successful_chunk_temporaries",True)),
+        "xai_retention_per_model_per_chunk":int(cfg.get("xai_retention_per_model_per_chunk",4)),
     }
+
+
+def _evenly_spaced(items: list[str], limit: int) -> list[str]:
+    ordered=sorted(dict.fromkeys(str(x) for x in items))
+    if limit <= 0 or not ordered:
+        return []
+    if len(ordered) <= limit:
+        return ordered
+    if limit == 1:
+        return [ordered[0]]
+    indexes=sorted(set(round(i*(len(ordered)-1)/(limit-1)) for i in range(limit)))
+    return [ordered[i] for i in indexes]
+
+
+def _retain_xai_and_cleanup_model_batch(cdir: Path, per_model_limit: int) -> dict:
+    """Retain a compact deterministic XAI sample and remove heavyweight model_batch temporaries.
+
+    This function never changes predictions, chunk identity or resume hashes. The chunk-level
+    xai_artifacts.json is rewritten to reference only retained copies outside model_batch.
+    """
+    xp=cdir/"xai_artifacts.json"
+    source={m:[] for m in MODELS}
+    if xp.exists():
+        try:
+            payload=json.loads(xp.read_text(encoding="utf-8"))
+            for model in MODELS:
+                source[model]=[str(x) for x in payload.get(model,[])]
+        except Exception:
+            source={m:[] for m in MODELS}
+    retained={m:[] for m in MODELS}; generated={m:len(source[m]) for m in MODELS}
+    root=cdir/"xai_retained"
+    for model in MODELS:
+        chosen=_evenly_spaced(source[model],per_model_limit)
+        if chosen:
+            dest_dir=root/model; dest_dir.mkdir(parents=True,exist_ok=True)
+            for idx,raw in enumerate(chosen):
+                src=Path(raw)
+                if not src.exists() or not src.is_file():
+                    continue
+                suffix=src.suffix or ".bin"
+                dest=dest_dir/f"{idx:04d}{suffix}"
+                shutil.copy2(src,dest)
+                retained[model].append(str(dest))
+    write_json(xp,retained)
+    batch=cdir/"model_batch"
+    removed_paths=[]
+    if batch.exists():
+        for name in ("images","preprocessed","data.pkl"):
+            target=batch/name
+            if target.is_dir():
+                shutil.rmtree(target)
+                removed_paths.append(name)
+            elif target.exists():
+                target.unlink()
+                removed_paths.append(name)
+    summary={
+        "policy":"deterministic_evenly_spaced_xai_sample_then_prune_heavy_model_batch_temporaries",
+        "generated_xai_count":generated,
+        "retained_xai_count":{m:len(retained[m]) for m in MODELS},
+        "per_model_limit":int(per_model_limit),
+        "removed_model_batch_paths":removed_paths,
+        "native_model_csvs_preserved":all((batch/f"{m}.csv").exists() for m in MODELS) if batch.exists() else False,
+        "study_order_preserved":(batch/"study_order.csv").exists() if batch.exists() else False,
+        "predictions_modified":False,
+    }
+    write_json(cdir/"cleanup_summary.json",summary)
+    return summary
+
+
+def _cleanup_orientation_temporaries(cdir: Path) -> dict:
+    removed=[]
+    for name in ("original","counterfactual"):
+        p=cdir/name
+        if p.exists():
+            shutil.rmtree(p)
+            removed.append(name)
+    summary={
+        "policy":"remove_orientation_preflight_workdirs_after_persisted_evidence",
+        "removed_directories":removed,
+        "resolved_manifest_preserved":(cdir/"resolved_manifest.csv").exists(),
+        "evidence_csvs_preserved":True,
+    }
+    write_json(cdir/"cleanup_summary.json",summary)
+    return summary
 
 
 def _chunk_cache_status(sub: pd.DataFrame, cdir: Path, chunk_index: int) -> tuple[bool,pd.DataFrame|None,str|None]:
@@ -279,10 +365,16 @@ def _infer_three_chunked(df: pd.DataFrame, run_dir: Path, run_id: str, chunk_siz
         try:
             pred=_infer_three(sub,cdir,f"{run_id}-c{chunk_index:04d}")
             pred_path=cdir/"raw_model_predictions.csv"
+            if policy["cleanup_successful_chunk_temporaries"]:
+                try:
+                    summary=_retain_xai_and_cleanup_model_batch(cdir,policy["xai_retention_per_model_per_chunk"])
+                    audit("FORMAL_CHUNK_TEMPORARIES_CLEANED",run_id=run_id,chunk=chunk_index,**summary)
+                except Exception as cleanup_exc:
+                    audit("FORMAL_CHUNK_CLEANUP_WARNING",run_id=run_id,chunk=chunk_index,error=str(cleanup_exc))
             status_payload={
                 "status":"SUCCESS","run_id":run_id,"chunk":chunk_index,"studies":int(len(sub)),
                 "input_manifest_sha256":input_hash,"predictions_sha256":_sha256_file(pred_path),
-                "version":"0.30.2","completed_at_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "version":"0.31.1","completed_at_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
             }
             write_json(cdir/"chunk_status.json",status_payload)
             chunks.append(pred); chunk_dirs.append((chunk_index,cdir)); completed_studies += len(sub)
@@ -410,11 +502,17 @@ def _resolve_orientation_chunked(df: pd.DataFrame, output_dir: Path, run_id: str
             audit("ORIENTATION_CHUNK_STARTED",run_id=run_id,chunk=idx,studies=len(sub))
             try:
                 resolved=resolve_orientation(sub,cdir,f"{run_id}-c{idx:04d}")
+                if _formal_inference_config(size)["cleanup_successful_chunk_temporaries"]:
+                    try:
+                        summary=_cleanup_orientation_temporaries(cdir)
+                        audit("ORIENTATION_CHUNK_TEMPORARIES_CLEANED",run_id=run_id,chunk=idx,**summary)
+                    except Exception as cleanup_exc:
+                        audit("ORIENTATION_CHUNK_CLEANUP_WARNING",run_id=run_id,chunk=idx,error=str(cleanup_exc))
                 status={
                     "status":"SUCCESS","run_id":run_id,"chunk":idx,"studies":len(sub),
                     "input_manifest_sha256":_frame_sha256(sub),
                     "resolved_manifest_sha256":_sha256_file(cdir/"resolved_manifest.csv"),
-                    "version":"0.30.2","completed_at_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "version":"0.31.1","completed_at_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 }
                 write_json(cdir/"orientation_chunk_status.json",status)
                 results.append(resolved); chunk_dirs.append((idx,cdir)); completed+=len(sub)
@@ -744,7 +842,7 @@ def experimental_test(datasets, samples=None, configuration_ratio=0.30, seed=42,
             "final_test_manifest_sha256":final_hash,
             "configuration_inference_before_freeze":True,"final_inference_before_freeze":False,
             "inference_policy":"Each formal study belongs to exactly one subset. Configuration is inferred before freeze; Final Test scores are created only after freeze.",
-            "threshold_policy":"Five label-independent score quantiles are derived per weight combination from Configuration Set scores only.",
+            "threshold_policy":f"{len(threshold_strategy_config()['quantiles'])} label-independent score quantiles are derived per weight combination from Configuration Set scores only.",
             "selection_policy":"Highest ROC-AUC by weights -> highest Balanced Accuracy by threshold -> Sensitivity -> Specificity/FP -> baseline distance. AUPRC/AP and F1 are reported but do not change this policy.",
             "orientation_policy":ORIENTATION_POLICY_ID,"orientation_policy_ground_truth_used":False,"final_orientation_resolution_before_freeze":False,
             "formal_inference":{"mode":"chunked_resumable","chunk_size":int(inference_cfg["chunk_size"]),"models_parallel":False,"model_order":MODELS,"resume_enabled":True,"cache_policy":inference_cfg["cache_policy"]},
@@ -774,7 +872,7 @@ def experimental_test(datasets, samples=None, configuration_ratio=0.30, seed=42,
     write_report(run_dir/"configuration_report.md","Experimental Configuration Report",{
         "run_id":run_id,"prepared_studies":prepared_studies,"formal_excluded_studies":len(excluded_df),
         "formal_pool_studies":len(formal_df),"configuration_studies":len(config_df),"final_test_reserved":len(final_df),
-        "configurations":80,"threshold_strategy":threshold_strategy_config(),"formal_chunk_size":inference_cfg["chunk_size"],
+        "configurations":len(load_yaml("experiments.yaml")["weights"])*len(threshold_strategy_config()["quantiles"]),"threshold_strategy":threshold_strategy_config(),"formal_chunk_size":inference_cfg["chunk_size"],
         "selected_weight_id":sel.weight_id,"selected_threshold":sel.threshold,"selected_roc_auc":sel.roc_auc,
         "selected_auprc":sel.auprc,"selected_f1":sel.f1,"selected_balanced_accuracy":sel.balanced_accuracy,
         "selected_sensitivity":sel.sensitivity,"selected_specificity":sel.specificity,"selected_fp":int(sel.fp),"selected_fn":int(sel.fn),
@@ -786,11 +884,16 @@ def experimental_test(datasets, samples=None, configuration_ratio=0.30, seed=42,
 
 def freeze_experiment(experiment_id: str) -> Path:
     run_dir=WORKSPACE_ROOT/"output"/"experiments"/experiment_id
-    best=run_dir/"best_configuration.json"
-    if not best.exists(): raise FileNotFoundError(f"best_configuration.json not found for {experiment_id}")
+    expanded=run_dir/"configuration_selection_v0310"/"best_configuration.json"
+    legacy=run_dir/"best_configuration.json"
+    best=expanded if expanded.exists() else legacy
+    if not best.exists(): raise FileNotFoundError(f"No selected configuration found for {experiment_id}")
     import json
     sel=json.loads(best.read_text(encoding="utf-8"))
+    selection_source="expanded_cv_v0310" if best==expanded else "legacy_configuration_selection"
     frozen={"source_experiment":experiment_id,
+            "selection_source":selection_source,
+            "selection_artifact":str(best.relative_to(run_dir)),
             "weights":{"gmic":float(sel["w_gmic"]),"nyu":float(sel["w_nyu"]),"glam":float(sel["w_glam"])},
             "threshold":float(sel["threshold"]),
             "selection_policy":"ROC-AUC by weights -> Balanced Accuracy -> Sensitivity -> Specificity/FP -> baseline distance",

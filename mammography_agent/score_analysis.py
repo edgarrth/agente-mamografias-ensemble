@@ -103,8 +103,8 @@ def threshold_strategy_config() -> dict:
     if strategy.get("mode") != "score_quantiles":
         raise ValueError("config/experiments.yaml threshold_strategy.mode must be score_quantiles")
     quantiles = strategy.get("quantiles", {})
-    if not isinstance(quantiles, dict) or len(quantiles) != 5:
-        raise ValueError("threshold_strategy.quantiles must contain exactly 5 threshold IDs")
+    if not isinstance(quantiles, dict) or not quantiles:
+        raise ValueError("threshold_strategy.quantiles must contain at least one threshold ID")
     for key, value in quantiles.items():
         q = float(value)
         if not 0.0 <= q <= 1.0:
@@ -117,7 +117,7 @@ def derive_threshold_candidates(
     strategy: dict | None = None,
     threshold_source: str = "configuration_score_quantile",
 ) -> list[dict]:
-    """Derive five deterministic, label-independent thresholds from score quantiles.
+    """Derive deterministic, label-independent thresholds from configured score quantiles.
 
     Candidate values depend only on the supplied model/ensemble scores. Ground truth is
     deliberately not consulted here; labels may be used later only to evaluate already

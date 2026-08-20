@@ -318,3 +318,21 @@ Corrige la entrada de `orientation_counterfactual_diagnostic` para registrar `id
 - Final evaluation uses the same resumable orientation/inference mechanism, but remains blocked until `frozen_configuration.yaml` exists.
 - Successful cache/hash mismatches fail closed; incomplete chunks are restarted from the beginning while earlier successful chunks are reused.
 - FastAPI research image now includes pytest and the release test/static-contract files so `docker compose exec fastapi python -m pytest -q` is a supported validation command.
+
+## 2026-08-19 — v0.31.0: expanded Configuration grid + stratified CV reselection
+
+- Preserves the completed v0.30.2 RSNA Configuration inference and the untouched 8,333-study Final Test.
+- Expands the Configuration search from 16 weights × 5 quantiles (80) to 40 weights × 17 quantiles (680).
+- Adds deterministic stratified 5-fold CV (seed 42), producing 3,400 held-out candidate evaluations without rerunning GMIC/NYU/GLAM.
+- Thresholds are derived from training-fold scores only; labels are never used to construct threshold values.
+- Preserves the previously declared selection hierarchy: ROC-AUC by weights, then Balanced Accuracy, Sensitivity, Specificity/FP and baseline distance.
+- Writes all v0.31.0 selection evidence additively under `configuration_selection_v0310/`; v0.30.2 ranking/best-configuration artifacts remain unchanged.
+- Refuses post-hoc reselection after freeze or if Final-Test scores already exist.
+
+## 2026-08-19 — v0.31.1: bounded-disk chunk retention
+
+- Added validated post-SUCCESS cleanup for formal orientation and inference chunks.
+- Preserves prediction/resume hashes, native model CSVs, study order, metrics and compact deterministic XAI evidence.
+- Removes only regenerable copied-image and preprocessing work products.
+- Added dry-run/apply cleanup CLI for already completed Configuration chunks.
+- No scientific or methodological selection behavior changed.

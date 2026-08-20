@@ -5,6 +5,11 @@ split:
   stratified: true
   seed: 42
 
+# Expanded predeclared search space for the formal RSNA Configuration Set.
+# W01-W16 preserve the v0.30.2 identifiers exactly. W17-W40 add the missing
+# 0.10-step simplex combinations while requiring every model to keep >= 0.10
+# weight. This gives 40 unique weight combinations without adding zero-weight
+# pseudo-ensembles (individual models are evaluated separately).
 weights:
   W01: [0.333333, 0.333333, 0.333334]
   W02: [0.40, 0.30, 0.30]
@@ -22,21 +27,57 @@ weights:
   W14: [0.60, 0.20, 0.20]
   W15: [0.20, 0.60, 0.20]
   W16: [0.20, 0.20, 0.60]
+  W17: [0.10, 0.10, 0.80]
+  W18: [0.10, 0.20, 0.70]
+  W19: [0.10, 0.30, 0.60]
+  W20: [0.10, 0.40, 0.50]
+  W21: [0.10, 0.50, 0.40]
+  W22: [0.10, 0.60, 0.30]
+  W23: [0.10, 0.70, 0.20]
+  W24: [0.10, 0.80, 0.10]
+  W25: [0.20, 0.10, 0.70]
+  W26: [0.20, 0.40, 0.40]
+  W27: [0.20, 0.70, 0.10]
+  W28: [0.30, 0.10, 0.60]
+  W29: [0.30, 0.60, 0.10]
+  W30: [0.40, 0.10, 0.50]
+  W31: [0.40, 0.20, 0.40]
+  W32: [0.40, 0.40, 0.20]
+  W33: [0.40, 0.50, 0.10]
+  W34: [0.50, 0.10, 0.40]
+  W35: [0.50, 0.40, 0.10]
+  W36: [0.60, 0.10, 0.30]
+  W37: [0.60, 0.30, 0.10]
+  W38: [0.70, 0.10, 0.20]
+  W39: [0.70, 0.20, 0.10]
+  W40: [0.80, 0.10, 0.10]
 
-# v0.22+ replaces the obsolete fixed 0.40-0.60 threshold grid. Five candidates
-# are derived separately for each weight combination from score quantiles in the
-# Configuration Set. Ground-truth labels are NOT used to construct candidate
-# thresholds; labels are used only afterwards to evaluate each candidate.
+# Expanded adaptive threshold grid. Thresholds remain label-independent and are
+# derived separately for every weight combination from Configuration-Set score
+# quantiles. More resolution is intentionally allocated to the upper tail because
+# RSNA has low malignancy prevalence; this does NOT use labels to derive a threshold.
 threshold_strategy:
   mode: score_quantiles
   derive_per_weight: true
   ground_truth_used_for_derivation: false
   quantiles:
     T01: 0.10
-    T02: 0.30
-    T03: 0.50
-    T04: 0.70
-    T05: 0.90
+    T02: 0.20
+    T03: 0.30
+    T04: 0.40
+    T05: 0.50
+    T06: 0.60
+    T07: 0.70
+    T08: 0.80
+    T09: 0.85
+    T10: 0.90
+    T11: 0.92
+    T12: 0.94
+    T13: 0.95
+    T14: 0.96
+    T15: 0.97
+    T16: 0.98
+    T17: 0.99
 
 legacy_thresholds_v021_not_used:
   T01: 0.40
@@ -45,10 +86,12 @@ legacy_thresholds_v021_not_used:
   T04: 0.55
   T05: 0.60
 
-# v0.23 selection avoids the previous "minimum FN first" policy, which can
-# reward an almost-all-positive classifier. ROC-AUC selects the weighting;
-# Balanced Accuracy selects the operating point; Sensitivity/Specificity break ties.
 selection:
+  protocol: stratified_5fold_cv_expanded_grid_v0310
+  cv_folds: 5
+  cv_seed: 42
+  cv_shuffle: true
+  full_configuration_refit_threshold: true
   balanced_accuracy_tolerance: 0.00
   order:
     - highest_roc_auc_by_weights
@@ -58,14 +101,6 @@ selection:
     - lowest_false_positives
     - nearest_baseline
 
-# v0.30.1 formal-evaluation leakage guard. These patients were intentionally
-# observed during technical/diagnostic validation and are removed BEFORE the
-# Configuration/Final split. The 30/70 split therefore covers 100% of the
-# remaining formal pool, not 100% of the originally prepared manifest.
-
-# v0.30.2 operational execution only. This does not change the formal 30/70 split,
-# candidate weights, thresholds, selection policy, preprocessing or model semantics.
-# Orientation and inference are checkpointed using deterministic ordered chunks.
 formal_inference:
   mode: chunked_resumable
   chunk_size: 25
@@ -73,6 +108,8 @@ formal_inference:
   models_parallel: false
   model_order: [gmic, nyu, glam]
   cache_policy: SUCCESS_MARKER_AND_HASHES
+  cleanup_successful_chunk_temporaries: true
+  xai_retention_per_model_per_chunk: 4
 
 formal_exclusions:
   rsna:

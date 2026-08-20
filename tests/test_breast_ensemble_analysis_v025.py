@@ -20,5 +20,5 @@ def test_breast_aware_analysis_is_diagnostic_and_preserves_production_contract(t
     assert summary['research_guards']['production_aggregation_changed'] is False
     assert summary['research_guards']['eligible_for_freeze'] is False
     ranking=pd.read_csv(out/'aggregation_strategy_ranking.csv')
-    assert len(ranking)==16
+    assert len(ranking)==40
     assert {'current_study_roc_auc','breast_aware_study_roc_auc','breast_level_roc_auc'} <= set(ranking.columns)

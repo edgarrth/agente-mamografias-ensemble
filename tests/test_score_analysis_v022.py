@@ -25,13 +25,13 @@ def test_score_analysis_writes_research_evidence(tmp_path: Path):
     assert summary["research_guards"]["calibration_performed"] is False
     assert summary["threshold_strategy"]["ground_truth_used_for_threshold_derivation"] is False
     candidates=pd.read_csv(tmp_path/"candidate_thresholds.csv")
-    assert len(candidates)==80
+    assert len(candidates)==680
     assert set(candidates.threshold_source)=={"analysis_score_quantile"}
     assert summary["baseline"]["classification_metrics"]["specificity"] is not None
     assert "balanced_accuracy" in summary["baseline"]["classification_metrics"]
     assert summary["threshold_strategy"]["diagnostic_results_eligible_for_freeze"] is False
     diagnostic=pd.read_csv(tmp_path/"diagnostic_configurations.csv")
-    assert len(diagnostic)==80
+    assert len(diagnostic)==680
     assert set(diagnostic.diagnostic_only)=={True}
     assert set(diagnostic.eligible_for_freeze)=={False}
     assert {"specificity","precision_ppv","npv","fpr","balanced_accuracy"}.issubset(diagnostic.columns)

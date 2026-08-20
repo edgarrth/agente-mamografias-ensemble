@@ -6,7 +6,7 @@ from .metrics import evaluate
 
 
 def all_configurations(df: pd.DataFrame) -> pd.DataFrame:
-    """Evaluate 16 weights x 5 adaptive thresholds on cached Configuration Set scores.
+    """Evaluate the configured weight x adaptive-threshold grid on cached Configuration Set scores.
 
     Threshold candidates are derived independently for each weight combination from
     Configuration Set score quantiles and do not use ground-truth labels. Labels are
@@ -31,7 +31,8 @@ def all_configurations(df: pd.DataFrame) -> pd.DataFrame:
                 **m,
             })
     out=pd.DataFrame(rows)
-    if len(out)!=80: raise AssertionError(f"Expected 80 configurations, got {len(out)}")
+    expected=len(cfg["weights"])*len(strategy["quantiles"])
+    if len(out)!=expected: raise AssertionError(f"Expected {expected} configurations, got {len(out)}")
     return out
 
 

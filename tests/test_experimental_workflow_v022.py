@@ -49,7 +49,7 @@ def test_experimental_flow_keeps_final_isolated_and_reuses_final_cache(tmp_path,
     assert (run_dir/"configuration_set_manifest.csv").exists()
     assert len(pd.read_csv(run_dir/"final_test_manifest.csv"))==14
     assert not (run_dir/"final_inference").exists()
-    assert len(pd.read_csv(run_dir/"all_configurations.csv"))==80
+    assert len(pd.read_csv(run_dir/"all_configurations.csv"))==680
     assert (run_dir/"configuration_score_analysis"/"score_summary.json").exists()
     assert (run_dir/"configuration_score_analysis"/"diagnostic_configurations.csv").exists()
 

@@ -1,4 +1,4 @@
-# Verification — through v0.30.2
+# Verification — through v0.31.0
 
 ## Scope
 
@@ -118,3 +118,19 @@
 - Configuration and Final population/split semantics remain covered by the v0.30.1 tests.
 - Python compilation of the updated pipeline and CLIs passes.
 - FastAPI Dockerfile installs the `[test]` extra and copies repository static-contract inputs so pytest can be run inside the rebuilt application container.
+
+
+## v0.31.0 expanded-grid / CV selection evidence
+
+- `tests/test_expanded_cv_selection_v0310.py` contains five regression tests covering deterministic stratified fold assignment, 680 unique candidates, 3,400 held-out fold evaluations, additive evidence artifacts, label-independent threshold derivation, no-Final/no-model-rerun guards, and freeze preference for the expanded CV selection when present.
+- Existing adaptive-threshold/grid tests now validate 40 unique weights × 17 configured quantiles.
+- Legacy v0.30.2 artifacts remain readable; the new reselection command writes to `configuration_selection_v0310/` and does not overwrite the historical ranking or best configuration.
+
+## v0.31.1 formal temporary cleanup
+
+- Cleanup is post-success and does not modify canonical or chunk-level prediction CSVs.
+- Orientation resume requires `orientation_chunk_status.json` + hashed `resolved_manifest.csv`; heavyweight preflight workdirs are not part of the resume contract.
+- Inference resume requires `chunk_status.json` + hashed `raw_model_predictions.csv`; heavyweight copied images/preprocessed workdirs are not part of the resume contract.
+- Native `{gmic,nyu,glam}.csv` and `study_order.csv` are preserved for provenance reconstruction.
+- A compact deterministic XAI sample is retained outside the pruned preprocessing tree.
+- Existing Configuration cleanup defaults to dry-run and validates all SUCCESS caches before `--apply` can prune them.
