@@ -1831,3 +1831,779 @@ v0.35.3 corrige la persistencia Web entre upgrades del proyecto. PostgreSQL y Mi
 ## 14.2 Nota de versión 0.35.2
 
 v0.35.2 es una actualización **documental** del README. Reorganiza la documentación operativa alrededor de arquitectura, código, scripts, Web y Batch y convierte los diagramas del README a Mermaid. No cambia modelos, datasets, preprocessing, orientación, pesos, thresholds, reglas del experimento ni comportamiento de inferencia respecto de v0.35.1.
+---
+
+# 15. Preparación y empaquetado para producción — v0.36.0
+
+Esta sección documenta el perfil de **producción Web CPU** incorporado en `v0.36.0` y la secuencia utilizada para preparar un release reproducible antes de desplegarlo en un VPS.
+
+El objetivo de este perfil es cambiar **cómo se empaqueta y despliega la Web**, sin cambiar la lógica inferencial validada del proyecto:
+
+- no modifica GMIC, NYU/DMV-CNN ni GLAM;
+- no modifica `config/models.yaml`, `config/ensemble.yaml` ni `config/experiments.yaml`;
+- no cambia pesos, threshold, preprocessing ni política de orientación;
+- mantiene aislados Web y Batch;
+- no ejecuta el proceso Batch en el VPS de producción;
+- no construye modelos en el VPS;
+- publica imágenes previamente validadas y el host de producción hace únicamente `pull`;
+- expone públicamente solo el componente `edge`/Caddy en `80/443`;
+- mantiene FastAPI, Streamlit, Model Runner, PostgreSQL, Redis y MinIO dentro de las redes Docker.
+
+## 15.1 Arquitectura del perfil productivo
+
+```mermaid
+flowchart TB
+    U[Internet / navegador]
+
+    EDGE[Caddy / edge<br/>80 / 443 públicos]
+    ST[Streamlit<br/>8501 interno]
+    API[FastAPI<br/>8000 interno]
+    MR[Model Runner<br/>8010 interno]
+
+    PG[(PostgreSQL<br/>5432 interno)]
+    REDIS[(Redis<br/>6379 interno)]
+    MINIO[(MinIO<br/>9000 interno)]
+
+    GMIC[GMIC child container]
+    NYU[NYU child container]
+    GLAM[GLAM child container]
+
+    U --> EDGE
+    EDGE --> ST
+    ST --> API
+
+    API --> PG
+    API --> REDIS
+    API --> MINIO
+    API --> MR
+
+    MR --> GMIC
+    MR --> NYU
+    MR --> GLAM
+```
+
+El `Model Runner` conserva acceso a `/var/run/docker.sock` porque la arquitectura validada crea contenedores efímeros para GMIC, NYU y GLAM.
+
+Aunque el VPS productivo ejecuta inferencia Web en **CPU**, se conservan también las imágenes Blackwell utilizadas por la configuración validada. El objetivo es no cambiar `models.yaml` ni introducir diferencias de comportamiento únicamente por el traslado a producción.
+
+## 15.2 Archivos añadidos para producción
+
+El perfil productivo utiliza los siguientes archivos:
+
+```text
+deployment/
+└── production/
+    ├── .env.production.example
+    ├── Caddyfile
+    ├── docker-compose.prod.yml
+    ├── edge.Dockerfile
+    ├── runtime-assets.Dockerfile
+    └── production-image-lock.txt
+
+scripts/
+└── production/
+    ├── deploy-production.sh
+    ├── generate-basic-auth-hash.sh
+    ├── lock-production-images.sh
+    ├── publish-existing-model-images.sh
+    ├── publish-platform-images.sh
+    ├── pull-production-images.sh
+    ├── status-production.sh
+    └── validate-production-config.sh
+```
+
+### Responsabilidad de cada script
+
+| Script | Uso | Dónde se ejecuta |
+|---|---|---|
+| `generate-basic-auth-hash.sh` | Genera el bcrypt que Caddy usa para Basic Auth. | Workstation o VPS |
+| `validate-production-config.sh` | Valida `.env.production`, `docker compose config` y puertos publicados. | Workstation y VPS |
+| `publish-existing-model-images.sh` | Publica en Docker Hub las imágenes de modelos ya existentes/validadas. No debe usarse para cambiar los modelos. | Workstation de empaquetado |
+| `publish-platform-images.sh` | Construye/publica las imágenes de aplicación, Model Runner, edge y runtime assets. | Workstation de empaquetado |
+| `lock-production-images.sh` | Registra los digests de registry de las imágenes utilizadas por el release. | Workstation de empaquetado |
+| `pull-production-images.sh` | Descarga imágenes de plataforma/modelos e instala los aliases locales esperados por `models.yaml`. | VPS |
+| `deploy-production.sh` | Ejecuta validate → pull → `docker compose up -d --remove-orphans`. | VPS o prueba local productiva |
+| `status-production.sh` | Muestra el estado del stack productivo. | VPS o prueba local productiva |
+
+Los scripts `publish-*` pertenecen al **empaquetado**. No deben ejecutarse en Contabo durante una instalación normal.
+
+## 15.3 Imágenes que forman el release de producción
+
+### Plataforma
+
+```text
+edgarrth/mammography-agent-app:0.36.0
+edgarrth/mammography-agent-model-runner:0.36.0
+edgarrth/mammography-agent-edge:0.36.0
+edgarrth/mammography-runtime-assets:runtime-v1
+```
+
+### Modelos CPU research
+
+```text
+edgarrth/mammography-model-gmic:research
+edgarrth/mammography-model-nyu:research
+edgarrth/mammography-model-glam:research
+```
+
+### Modelos Blackwell
+
+```text
+edgarrth/mammography-model-gmic:blackwell-cu128-r3
+edgarrth/mammography-model-nyu:blackwell-cu128-r1
+edgarrth/mammography-model-glam:blackwell-cu128-r2
+```
+
+### Infraestructura
+
+```text
+postgres:16.15-alpine3.24
+redis:7-alpine
+minio/minio:latest
+```
+
+`production-image-lock.txt` es la fuente de verdad para los **digests exactos** del release. No se debe asumir que un tag mutable continúa apuntando al mismo contenido únicamente por conservar el mismo nombre.
+
+> `minio/minio:latest` quedó congelado por digest en el lock de `v0.36.0`. Pinnear MinIO directamente por digest puede hacerse en un hardening posterior; no debe introducirse ese cambio durante la reproducción del release ya validado sin repetir las pruebas.
+
+## 15.4 Precondiciones en la workstation de empaquetado
+
+Antes de publicar o empaquetar el release:
+
+**Tiempo estimado:** menos de 10 segundos.
+
+```bash
+cd /mnt/d/Workspace/Python/agente-mamografias-ensemble
+
+git rev-parse HEAD
+git status --short
+cat VERSION
+
+docker version
+docker compose version
+```
+
+Validar:
+
+- `VERSION` corresponde al release que se desea publicar;
+- el HEAD real queda registrado;
+- no existen cambios de código sin revisar;
+- Docker Engine funciona;
+- Docker Compose Plugin está disponible;
+- los runtimes GMIC, NYU y GLAM que se van a publicar ya fueron validados;
+- no se va a reconstruir un modelo solo para hacer que producción arranque.
+
+Para `v0.36.0`, el release finalmente desplegado quedó fijado en:
+
+```text
+ad5274c876e02e2472553f44290441269cfd267f
+```
+
+## 15.5 Verificar `.dockerignore`
+
+El contexto de build de las imágenes productivas no debe incluir el workspace pesado de investigación.
+
+Comprobar que `.dockerignore` excluye, como mínimo, artefactos que no deben viajar dentro de las imágenes:
+
+```text
+workspace/
+datasets/
+outputs grandes
+caches de runtime que no formen parte del runtime-assets controlado
+secretos locales
+.env.production
+```
+
+La corrección de exclusión del runtime workspace fue incorporada antes del empaquetado final de `v0.36.0`.
+
+## 15.6 Preservar permisos ejecutables de los scripts
+
+En la instalación real de `v0.36.0` se detectó que los scripts de `scripts/production/` estaban almacenados en Git como `100644`. En Linux esto produce:
+
+```text
+Permission denied
+```
+
+al intentar ejecutarlos directamente.
+
+Antes del próximo empaquetado se recomienda corregir el modo ejecutable en Git:
+
+**Tiempo estimado:** menos de 5 segundos.
+
+```bash
+chmod +x scripts/production/*.sh
+git update-index --chmod=+x scripts/production/*.sh
+git diff --summary -- scripts/production/
+```
+
+El resultado debe mostrar los scripts con modo `100755`.
+
+En un release ya congelado donde no se quiera crear un commit adicional, el workaround en el host es:
+
+```bash
+chmod u+x scripts/production/*.sh
+```
+
+Este cambio solo afecta permisos de ejecución; no modifica la lógica de los scripts.
+
+## 15.7 Crear una configuración productiva local de validación
+
+No versionar `deployment/production/.env.production`.
+
+Crear el archivo desde la plantilla:
+
+**Tiempo estimado:** menos de 5 segundos.
+
+```bash
+cp deployment/production/.env.production.example \
+   deployment/production/.env.production
+
+chmod 600 deployment/production/.env.production
+```
+
+Generar secretos nuevos para la prueba productiva. No reutilizar credenciales de otros ambientes.
+
+Ejemplo:
+
+```bash
+POSTGRES_SECRET="$(openssl rand -hex 32)"
+MINIO_SECRET="$(openssl rand -hex 32)"
+```
+
+Generar el hash de Basic Auth:
+
+**Tiempo estimado:** segundos; la primera ejecución puede descargar la imagen de Caddy.
+
+```bash
+./scripts/production/generate-basic-auth-hash.sh
+```
+
+El script devuelve una línea con este formato:
+
+```text
+APP_BASIC_AUTH_HASH='<BCRYPT_HASH>'
+```
+
+Copiarla exactamente al `.env.production`. Las comillas simples protegen los caracteres `$` del bcrypt frente a la interpolación de Compose.
+
+### Variables principales
+
+```env
+APP_IMAGE=edgarrth/mammography-agent-app:0.36.0
+MODEL_RUNNER_IMAGE=edgarrth/mammography-agent-model-runner:0.36.0
+EDGE_IMAGE=edgarrth/mammography-agent-edge:0.36.0
+RUNTIME_ASSETS_IMAGE=edgarrth/mammography-runtime-assets:runtime-v1
+
+GMIC_CPU_REMOTE_IMAGE=edgarrth/mammography-model-gmic:research
+NYU_CPU_REMOTE_IMAGE=edgarrth/mammography-model-nyu:research
+GLAM_CPU_REMOTE_IMAGE=edgarrth/mammography-model-glam:research
+
+GMIC_BLACKWELL_REMOTE_IMAGE=edgarrth/mammography-model-gmic:blackwell-cu128-r3
+NYU_BLACKWELL_REMOTE_IMAGE=edgarrth/mammography-model-nyu:blackwell-cu128-r1
+GLAM_BLACKWELL_REMOTE_IMAGE=edgarrth/mammography-model-glam:blackwell-cu128-r2
+
+POSTGRES_IMAGE=postgres:16.15-alpine3.24
+REDIS_IMAGE=redis:7-alpine
+MINIO_IMAGE=minio/minio:latest
+
+POSTGRES_DB=mammography
+POSTGRES_USER=mammography
+POSTGRES_PASSWORD=<NUEVO_SECRETO>
+DATABASE_URL=postgresql+psycopg://mammography:<MISMO_SECRETO>@postgres:5432/mammography
+
+MINIO_ROOT_USER=mammography-prod
+MINIO_ROOT_PASSWORD=<NUEVO_SECRETO>
+MINIO_ACCESS_KEY=mammography-prod
+MINIO_SECRET_KEY=<MISMO_SECRETO_MINIO>
+MINIO_WEB_BUCKET=mammography-web
+
+APP_SITE_ADDRESS=:80
+APP_BASIC_AUTH_USER=<USUARIO_WEB>
+APP_BASIC_AUTH_HASH='<BCRYPT_HASH>'
+
+LOG_LEVEL=INFO
+MODEL_BOOTSTRAP_MODE=lazy
+RESOURCE_SAMPLE_SECONDS=2
+DEFAULT_MAX_RUNTIME_MINUTES=120
+WEB_SCRATCH_TTL_MINUTES=60
+
+POSTGRES_VOLUME_NAME=mammography-prod-postgres-data
+MINIO_VOLUME_NAME=mammography-prod-minio-data
+WEB_SCRATCH_VOLUME_NAME=mammography-prod-web-scratch
+RUNTIME_WORKSPACE_VOLUME_NAME=mammography-prod-runtime-workspace
+CADDY_DATA_VOLUME_NAME=mammography-prod-caddy-data
+CADDY_CONFIG_VOLUME_NAME=mammography-prod-caddy-config
+```
+
+Para una prueba local que conviva con el ambiente Research, usar nombres de volúmenes exclusivos de prueba, por ejemplo `mammography-prodtest-*`, para evitar reutilizar accidentalmente PostgreSQL/MinIO existentes.
+
+## 15.8 Validar el Compose productivo antes de publicar
+
+**Tiempo estimado:** menos de 10 segundos.
+
+```bash
+./scripts/production/validate-production-config.sh \
+  deployment/production/.env.production
+```
+
+Resultado esperado:
+
+```text
+Compose configuration is valid.
+Published host ports:
+    published: "80"
+    published: "443"
+    published: "443"
+Expected: only 80/tcp, 443/tcp and 443/udp are public.
+```
+
+Confirmar además que producción no contiene directivas de build:
+
+```bash
+if grep -nE '^[[:space:]]*build:' \
+  deployment/production/docker-compose.prod.yml; then
+  echo "ERROR: BUILD DIRECTIVE FOUND"
+else
+  echo "NO BUILD DIRECTIVES"
+fi
+```
+
+Resultado esperado:
+
+```text
+NO BUILD DIRECTIVES
+```
+
+## 15.9 Publicar los modelos ya validados
+
+Autenticarse en Docker Hub desde la workstation con una credencial con permiso de escritura.
+
+El objetivo de esta etapa es publicar los runtimes **ya existentes y validados**, no reconstruir modelos en el servidor destino.
+
+El script asociado es:
+
+```text
+scripts/production/publish-existing-model-images.sh
+```
+
+Debe dejar disponibles en Docker Hub:
+
+```text
+GMIC  : research + blackwell-cu128-r3
+NYU   : research + blackwell-cu128-r1
+GLAM  : research + blackwell-cu128-r2
+```
+
+Después de publicar, comprobar que los tags aparecen dentro de cada repositorio de modelo en Docker Hub.
+
+Ejemplo:
+
+```text
+mammography-model-gmic
+├── research
+└── blackwell-cu128-r3
+```
+
+`research` y `blackwell-cu128-*` son **tags**, no repositorios independientes.
+
+## 15.10 Publicar las imágenes de plataforma
+
+El script de empaquetado de plataforma es:
+
+```text
+scripts/production/publish-platform-images.sh
+```
+
+La publicación debe dejar disponibles:
+
+```text
+edgarrth/mammography-agent-app:0.36.0
+edgarrth/mammography-agent-model-runner:0.36.0
+edgarrth/mammography-agent-edge:0.36.0
+edgarrth/mammography-runtime-assets:runtime-v1
+```
+
+### `mammography-agent-app`
+
+Imagen común de aplicación utilizada por los servicios Web productivos.
+
+### `mammography-agent-model-runner`
+
+Controlador ligero que habla con Docker Engine y lanza los runtimes ML separados.
+
+### `mammography-agent-edge`
+
+Caddy configurado como único punto de entrada público.
+
+### `mammography-runtime-assets`
+
+Contiene los artefactos runtime necesarios para sembrar el `runtime workspace` del VPS sin copiar el workspace pesado de investigación.
+
+El runtime assets de `v0.36.0` incluye también la metadata Blackwell validada requerida por los modelos.
+
+## 15.11 Congelar los digests del release
+
+Después de publicar todos los tags:
+
+```text
+scripts/production/lock-production-images.sh
+```
+
+El resultado es:
+
+```text
+deployment/production/production-image-lock.txt
+```
+
+El lock debe contener:
+
+- imagen/tag;
+- image ID local;
+- `RepoDigest` del registry.
+
+Antes de cerrar el release comprobar que están presentes las 13 referencias esperadas:
+
+```text
+4 imágenes de plataforma/runtime
+6 imágenes de modelos
+3 imágenes de infraestructura
+```
+
+No sobrescribir tags del release después de generar el lock sin volver a generar el inventario y repetir la validación productiva.
+
+## 15.12 Probar localmente el mismo artefacto que consumirá el VPS
+
+La validación final del empaquetado debe usar el mismo Compose y los mismos tags que se entregarán al VPS.
+
+Primero:
+
+```bash
+./scripts/production/validate-production-config.sh \
+  deployment/production/.env.production
+```
+
+Después:
+
+**Tiempo estimado:** primera vez puede requerir decenas de minutos o más por descarga; con caché, normalmente minutos.
+
+```bash
+./scripts/production/deploy-production.sh \
+  deployment/production/.env.production
+```
+
+El script realiza:
+
+```text
+validate-production-config.sh
+        |
+        v
+pull-production-images.sh
+        |
+        v
+docker compose up -d --remove-orphans
+```
+
+Resultado esperado:
+
+```text
+runtime-seed       Exited (0)
+bootstrap          Exited (0)
+postgres           healthy
+redis              healthy
+model-runner       healthy
+fastapi            healthy
+streamlit          Up
+edge               Up
+```
+
+Solo `edge` debe publicar puertos host.
+
+Validar:
+
+```bash
+docker compose \
+  --env-file deployment/production/.env.production \
+  -f deployment/production/docker-compose.prod.yml \
+  ps -a
+```
+
+Y:
+
+```bash
+docker ps
+```
+
+No deben quedar publicados:
+
+```text
+8000  FastAPI
+8010  Model Runner
+8501  Streamlit
+5432  PostgreSQL
+6379  Redis
+9000  MinIO
+9001  MinIO Console
+```
+
+## 15.13 Smoke test Web previo a liberar el paquete
+
+Sin credenciales, Caddy debe responder:
+
+```bash
+curl -I http://localhost
+```
+
+Resultado esperado:
+
+```text
+401 Unauthorized
+```
+
+Después abrir la interfaz a través de Caddy y ejecutar un estudio anonimizado completo.
+
+La validación productiva de `v0.36.0` debe comprobar:
+
+- ejecución real GMIC;
+- ejecución real NYU;
+- ejecución real GLAM;
+- weighted soft voting;
+- threshold Web;
+- persistencia PostgreSQL;
+- persistencia MinIO;
+- cleanup de `web_scratch`;
+- ausencia de mutación de la configuración Batch.
+
+Para la validación de paridad se utilizó además `RSNA_61568`, conservando la misma clasificación final que Batch.
+
+## 15.14 Verificar los digests antes de entregar el release
+
+Una vez terminado el pull/productive test, comparar las imágenes presentes con `production-image-lock.txt`.
+
+Ejemplo de verificación:
+
+```bash
+while read -r ref rest; do
+  [[ -z "$ref" ]] && continue
+
+  expected="$(printf '%s\n' "$rest" |
+    sed -n 's/.*RepoDigests=\["\([^"]*\)"\].*/\1/p')"
+
+  actual="$(docker image inspect "$ref" \
+    --format '{{json .RepoDigests}}' 2>/dev/null || true)"
+
+  if [[ -n "$expected" && "$actual" == *"\"$expected\""* ]]; then
+    echo "OK       $ref"
+  else
+    echo "MISMATCH $ref"
+    echo "  expected: $expected"
+    echo "  actual:   $actual"
+  fi
+done < deployment/production/production-image-lock.txt
+```
+
+No liberar el paquete si existe algún `MISMATCH` sin explicación.
+
+## 15.15 Qué debe formar parte del paquete de producción
+
+El artefacto entregable debe contener la orquestación y código necesarios para reproducir el release:
+
+```text
+VERSION
+config/
+mammography_agent/
+model_runner/
+ui/
+deployment/production/
+scripts/production/
+docker/
+docs/
+pyproject.toml
+requirements.txt
+```
+
+También debe conservarse:
+
+```text
+deployment/production/production-image-lock.txt
+```
+
+### No incluir
+
+No incluir en el paquete:
+
+- `.env.production` con secretos reales;
+- PAT de GitHub;
+- PAT de Docker Hub;
+- contraseñas;
+- hashes/credenciales que pertenezcan a otro ambiente;
+- datasets RSNA/CBIS-DDSM/CMMD/VinDr;
+- DICOM identificables;
+- `workspace/` pesado de investigación;
+- caches Docker locales;
+- credenciales PostgreSQL/MinIO de desarrollo.
+
+## 15.16 Forma recomendada de entregar el release
+
+### Opción A — Git, recomendada
+
+El mecanismo utilizado finalmente para Contabo fue clonar el repositorio y fijar producción en el SHA exacto.
+
+Antes de publicar:
+
+```bash
+git status --short
+git rev-parse HEAD
+git push origin <RAMA>
+git fetch origin
+git rev-list --left-right --count HEAD...origin/<RAMA>
+```
+
+Resultado esperado:
+
+```text
+0    0
+```
+
+En producción se debe hacer checkout del SHA validado, no depender permanentemente del último commit de la rama.
+
+Ejemplo del release `v0.36.0`:
+
+```bash
+git checkout --detach \
+  ad5274c876e02e2472553f44290441269cfd267f
+```
+
+### Opción B — ZIP reproducible
+
+Si no se desea usar Git en el VPS, crear un ZIP desde el commit:
+
+```bash
+git archive \
+  --format=zip \
+  --output=agente-mamografias-ensemble-v0.36.0-prod.zip \
+  HEAD
+```
+
+Generar el SHA-256:
+
+```bash
+sha256sum agente-mamografias-ensemble-v0.36.0-prod.zip
+```
+
+Registrar el hash junto con el release.
+
+El ZIP no debe contener `.env.production` ni datasets/workspace locales.
+
+## 15.17 Regla de instalación del paquete en producción
+
+El host de producción debe recibir únicamente:
+
+1. código/orquestación del release;
+2. `.env.production` nuevo, creado en el propio ambiente;
+3. credencial Docker Hub de solo lectura;
+4. acceso a Docker Hub para descargar las imágenes congeladas.
+
+El VPS **no** debe:
+
+```text
+construir GMIC
+construir NYU
+construir GLAM
+ejecutar publish-existing-model-images.sh
+ejecutar publish-platform-images.sh
+copiar datasets de investigación
+copiar el workspace Batch completo
+modificar models.yaml para hacer que arranque
+modificar ensemble.yaml para hacer que arranque
+modificar experiments.yaml para hacer que arranque
+```
+
+El flujo esperado en el VPS es únicamente:
+
+```text
+crear .env.production
+        |
+        v
+Docker Hub login read-only
+        |
+        v
+validate-production-config.sh
+        |
+        v
+pull-production-images.sh
+        |
+        v
+deploy-production.sh
+        |
+        v
+status-production.sh
+        |
+        v
+smoke test Web
+```
+
+## 15.18 Secuencia resumida de empaquetado
+
+```mermaid
+flowchart TD
+    A[Congelar VERSION + Git HEAD] --> B[Validar runtimes ya existentes]
+    B --> C[Revisar .dockerignore]
+    C --> D[Corregir permisos scripts/production]
+    D --> E[Crear .env.production local de prueba]
+    E --> F[Validar Compose productivo]
+    F --> G[Publicar modelos existentes]
+    G --> H[Publicar app / model-runner / edge / runtime-assets]
+    H --> I[Generar production-image-lock.txt]
+    I --> J[Deploy productivo local usando imágenes publicadas]
+    J --> K[Smoke test Web + PostgreSQL + MinIO]
+    K --> L[Verificar digests contra lock]
+    L --> M[Commit/push final o ZIP + SHA256]
+    M --> N[Release listo para VPS]
+```
+
+## 15.19 Criterio de salida del empaquetado
+
+El paquete está listo para producción únicamente cuando se cumplen todos estos puntos:
+
+- `VERSION` y Git SHA están registrados;
+- el working tree de código está limpio;
+- `scripts/production/*.sh` tienen permisos ejecutables;
+- `.env.production.example` contiene todas las variables requeridas pero ningún secreto real;
+- `docker-compose.prod.yml` valida;
+- no existen directivas `build:` en el Compose productivo;
+- solo `80/443` están publicados;
+- las imágenes de plataforma están en Docker Hub;
+- los tres modelos CPU `research` están en Docker Hub;
+- los tres modelos Blackwell están en Docker Hub;
+- `production-image-lock.txt` contiene los digests del release;
+- los digests descargados coinciden con el lock;
+- el deployment productivo local completa bootstrap/runtime-seed;
+- FastAPI y Model Runner están healthy;
+- la Web abre detrás de Caddy;
+- Basic Auth devuelve `401` sin credenciales;
+- una inferencia Web real completa correctamente;
+- PostgreSQL y MinIO persisten la ejecución;
+- `web_scratch` se limpia;
+- el Batch no fue modificado;
+- el paquete no contiene secretos, datasets ni el workspace pesado.
+
+---
+
+## 15.20 Nota de versión 0.36.0
+
+`v0.36.0` agrega un perfil productivo CPU orientado a VPS sin cambiar el comportamiento inferencial validado. La versión incorpora:
+
+- `deployment/production/docker-compose.prod.yml`;
+- Caddy como único punto de entrada público;
+- Basic Auth inicial;
+- imágenes preconstruidas de aplicación y Model Runner;
+- imagen `edge`;
+- imagen `runtime-assets`;
+- scripts dedicados para validar, publicar, bloquear digests, descargar, desplegar y consultar estado;
+- nombres de volúmenes productivos configurables;
+- deployment **no-build** en el VPS;
+- inventario reproducible mediante `production-image-lock.txt`;
+- soporte para validar primero por IP y posteriormente activar dominio/HTTPS.
+
+La preparación productiva cambia el mecanismo de distribución y operación, pero **no cambia GMIC, NYU, GLAM, Weighted Soft Voting, pesos, threshold, orientación, preprocessing ni el experimento Batch**.
+
