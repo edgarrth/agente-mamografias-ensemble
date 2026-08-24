@@ -15,8 +15,8 @@ def test_all_configuration_additions_have_required_fields_and_unique_ids():
         assert required <= set(item), f"entry #{index} missing {sorted(required - set(item))}: {item}"
         ids.append(item["id"])
     assert len(ids) == len(set(ids)), "configuration addition ids must be unique"
-    assert additions[-1]["id"] == "ADD-094"
-    assert additions[-1]["name"] == "rsna_study_ground_truth_v1"
+    assert additions[-1]["id"] == "ADD-100"
+    assert additions[-1]["name"] == "fastapi_embedded_release_test_suite_v0302"
 
 
 def test_configuration_additions_logger_runs_with_packaged_config(tmp_path, monkeypatch):

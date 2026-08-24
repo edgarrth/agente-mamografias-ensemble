@@ -1,0 +1,11 @@
+NAME                                 IMAGE                                            COMMAND                  SERVICE            CREATED          STATUS                      PORTS
+mammography-agent-fastapi            edgarrth/mammography-agent-app:0.36.0            "uvicorn mammography…"   fastapi            24 minutes ago   Up 24 minutes (healthy)     8000/tcp
+mammography-ai-prod-bootstrap-1      edgarrth/mammography-agent-app:0.36.0            "python -c 'from mam…"   bootstrap          24 minutes ago   Exited (0) 24 minutes ago   
+mammography-ai-prod-edge-1           edgarrth/mammography-agent-edge:0.36.0           "caddy run --config …"   edge               24 minutes ago   Up 24 minutes               0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp, 0.0.0.0:443->443/udp, [::]:443->443/udp, 2019/tcp
+mammography-ai-prod-minio-1          minio/minio:latest                               "/usr/bin/docker-ent…"   minio              24 minutes ago   Up 24 minutes               9000/tcp
+mammography-ai-prod-postgres-1       postgres:16.15-alpine3.24                        "docker-entrypoint.s…"   postgres           24 minutes ago   Up 24 minutes (healthy)     5432/tcp
+mammography-ai-prod-redis-1          redis:7-alpine                                   "docker-entrypoint.s…"   redis              24 minutes ago   Up 24 minutes (healthy)     6379/tcp
+mammography-ai-prod-runtime-seed-1   edgarrth/mammography-runtime-assets:runtime-v1   "sh -ec 'if [ -e /wo…"   runtime-seed       24 minutes ago   Exited (0) 24 minutes ago   
+mammography-ai-prod-streamlit-1      edgarrth/mammography-agent-app:0.36.0            "streamlit run ui/st…"   streamlit          24 minutes ago   Up 24 minutes               8501/tcp
+mammography-model-runner             edgarrth/mammography-agent-model-runner:0.36.0   "docker-entrypoint.s…"   model-runner       24 minutes ago   Up 24 minutes (healthy)     8010/tcp
+mammography-workspace-anchor         alpine:3.20                                      "sh -c 'mkdir -p /wo…"   workspace-anchor   24 minutes ago   Up 24 minutes               

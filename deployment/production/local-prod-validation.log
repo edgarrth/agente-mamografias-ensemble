@@ -1,0 +1,878 @@
+minio-1  | INFO: Formatting 1st pool, 1 set(s), 1 drives per set.
+minio-1         | INFO: WARNING: Host local has more than 0 drives of set. A host failure will result in data becoming unavailable.
+minio-1                    | MinIO Object Storage Server
+minio-1                    | Copyright: 2015-2026 MinIO, Inc.
+minio-1                    | License: GNU AGPLv3 - https://www.gnu.org/licenses/agpl-3.0.html
+minio-1                    | Version: RELEASE.2025-09-07T16-13-09Z (go1.24.6 linux/amd64)
+minio-1                    | 
+minio-1                    | API: http://172.19.0.4:9000  http://127.0.0.1:9000 
+minio-1                    | WebUI: http://172.19.0.4:9001 http://127.0.0.1:9001  
+minio-1                    | 
+minio-1                    | Docs: https://docs.min.io
+bootstrap-1     | 2026-08-19 18:00:29,735 INFO BOOTSTRAP_COMPLETED {}
+streamlit-1     | 
+streamlit-1                | Collecting usage statistics. To deactivate, set browser.gatherUsageStats to false.
+streamlit-1                | 
+streamlit-1                | 2026-08-19 18:00:53.320 Uvicorn server started on 0.0.0.0:8501
+streamlit-1                | 
+streamlit-1                |   You can now view your Streamlit app in your browser.
+streamlit-1                | 
+streamlit-1                |   Local URL: http://localhost:8501
+streamlit-1                |   Network URL: http://172.18.0.2:8501
+streamlit-1                |   External URL: http://181.65.25.87:8501
+redis-1                    | 1:C 19 Aug 2026 18:00:18.359 # WARNING Memory overcommit must be enabled! Without it, a background save or replication may fail under low memory condition. Being disabled, it can also cause failures without low memory condition, see https://github.com/jemalloc/jemalloc/issues/1328. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
+redis-1                    | 1:C 19 Aug 2026 18:00:18.359 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+redis-1                    | 1:C 19 Aug 2026 18:00:18.359 * Redis version=7.4.10, bits=64, commit=00000000, modified=0, pid=1, just started
+redis-1                    | 1:C 19 Aug 2026 18:00:18.359 # Warning: no config file specified, using the default config. In order to specify a config file use redis-server /path/to/redis.conf
+redis-1                    | 1:M 19 Aug 2026 18:00:18.359 * Increased maximum number of open files to 10032 (it was originally set to 1024).
+redis-1                    | 1:M 19 Aug 2026 18:00:18.359 * monotonic clock: POSIX clock_gettime
+redis-1                    | 1:M 19 Aug 2026 18:00:18.361 * Running mode=standalone, port=6379.
+redis-1                    | 1:M 19 Aug 2026 18:00:18.361 * Server initialized
+redis-1                    | 1:M 19 Aug 2026 18:00:18.361 * Ready to accept connections tcp
+edge-1   | {"level":"info","ts":1787162452.8046293,"msg":"maxprocs: Leaving GOMAXPROCS=12: CPU quota undefined"}
+edge-1                     | {"level":"info","ts":1787162452.8046646,"msg":"GOMEMLIMIT is updated","GOMEMLIMIT":15020819251,"previous":9223372036854775807}
+edge-1                     | {"level":"info","ts":1787162452.8046691,"msg":"using config from file","file":"/etc/caddy/Caddyfile"}
+edge-1                     | {"level":"info","ts":1787162452.8046713,"msg":"adapted config to JSON","adapter":"caddyfile"}
+edge-1                     | {"level":"warn","ts":1787162452.8046727,"msg":"Caddyfile input is not formatted; run 'caddy fmt --overwrite' to fix inconsistencies","adapter":"caddyfile","file":"/etc/caddy/Caddyfile","line":2}
+edge-1                     | {"level":"info","ts":1787162452.8089628,"logger":"admin","msg":"admin endpoint started","address":"localhost:2019","enforce_origin":false,"origins":["//[::1]:2019","//127.0.0.1:2019","//localhost:2019"]}
+edge-1                     | {"level":"warn","ts":1787162452.8091037,"logger":"http.auto_https","msg":"server is listening only on the HTTP port, so no automatic HTTPS will be applied to this server","server_name":"srv0","http_port":80}
+edge-1                     | {"level":"info","ts":1787162452.8092866,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0x18b6f323ca00"}
+edge-1                     | {"level":"warn","ts":1787162452.8094115,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":80"}
+edge-1                     | {"level":"warn","ts":1787162452.8094363,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":80"}
+edge-1                     | {"level":"info","ts":1787162452.8094406,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+edge-1                     | {"level":"info","ts":1787162452.809544,"msg":"autosaved config (load with --resume flag)","file":"/config/caddy/autosave.json"}
+edge-1                     | {"level":"info","ts":1787162452.809571,"msg":"serving initial configuration"}
+edge-1                     | {"level":"info","ts":1787162452.8126876,"logger":"tls","msg":"cleaning storage unit","storage":"FileStorage:/data/caddy"}
+edge-1                     | {"level":"info","ts":1787162452.8160424,"logger":"tls","msg":"finished cleaning storage units"}
+runtime-seed-1  | Runtime assets seeded successfully.
+postgres-1                 | The files belonging to this database system will be owned by user "postgres".
+postgres-1                 | This user must also own the server process.
+postgres-1                 | 
+postgres-1                 | The database cluster will be initialized with locale "en_US.utf8".
+postgres-1                 | The default database encoding has accordingly been set to "UTF8".
+postgres-1                 | The default text search configuration will be set to "english".
+postgres-1                 | 
+postgres-1                 | Data page checksums are disabled.
+postgres-1                 | 
+postgres-1                 | fixing permissions on existing directory /var/lib/postgresql/data ... ok
+postgres-1                 | creating subdirectories ... ok
+postgres-1                 | selecting dynamic shared memory implementation ... posix
+postgres-1                 | selecting default max_connections ... 100
+postgres-1                 | selecting default shared_buffers ... 128MB
+postgres-1                 | selecting default time zone ... UTC
+postgres-1                 | creating configuration files ... ok
+postgres-1                 | running bootstrap script ... ok
+postgres-1                 | sh: locale: not found
+postgres-1                 | 2026-08-19 18:00:19.509 UTC [35] WARNING:  no usable system locales were found
+postgres-1                 | performing post-bootstrap initialization ... ok
+postgres-1                 | initdb: warning: enabling "trust" authentication for local connections
+postgres-1                 | initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+postgres-1                 | syncing data to disk ... ok
+streamlit-1                | 
+streamlit-1                |   Detected WSL. Using poll-based file watching for better compatibility. To force watchdog, set server.fileWatcherType = "watchdog".
+streamlit-1                | 2026-08-19 18:03:36.790 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:04:17.898 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:04:21.126 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:04:21.135 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+postgres-1                 | 
+postgres-1                 | 
+postgres-1                 | Success. You can now start the database server using:
+postgres-1                 | 
+postgres-1                 |     pg_ctl -D /var/lib/postgresql/data -l logfile start
+postgres-1                 | 
+postgres-1                 | waiting for server to start....2026-08-19 18:00:20.487 UTC [41] LOG:  starting PostgreSQL 16.15 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+postgres-1                 | 2026-08-19 18:00:20.490 UTC [41] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+postgres-1                 | 2026-08-19 18:00:20.498 UTC [44] LOG:  database system was shut down at 2026-08-19 18:00:20 UTC
+postgres-1                 | 2026-08-19 18:00:20.504 UTC [41] LOG:  database system is ready to accept connections
+postgres-1                 |  done
+postgres-1                 | server started
+postgres-1                 | CREATE DATABASE
+postgres-1                 | 
+postgres-1                 | 
+postgres-1                 | /usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+postgres-1                 | 
+postgres-1                 | waiting for server to shut down....2026-08-19 18:00:20.858 UTC [41] LOG:  received fast shutdown request
+postgres-1                 | 2026-08-19 18:00:20.861 UTC [41] LOG:  aborting any active transactions
+postgres-1                 | 2026-08-19 18:00:20.863 UTC [41] LOG:  background worker "logical replication launcher" (PID 47) exited with exit code 1
+postgres-1                 | 2026-08-19 18:00:20.865 UTC [42] LOG:  shutting down
+postgres-1                 | 2026-08-19 18:00:20.988 UTC [42] LOG:  checkpoint starting: shutdown immediate
+postgres-1                 | 2026-08-19 18:00:21.422 UTC [42] LOG:  checkpoint complete: wrote 926 buffers (5.7%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.251 s, sync=0.046 s, total=0.557 s; sync files=301, longest=0.003 s, average=0.001 s; distance=4283 kB, estimate=4283 kB; lsn=0/1925D68, redo lsn=0/1925D68
+postgres-1                 | 2026-08-19 18:00:21.428 UTC [41] LOG:  database system is shut down
+postgres-1                 |  done
+postgres-1                 | server stopped
+postgres-1                 | 
+postgres-1                 | PostgreSQL init process complete; ready for start up.
+postgres-1                 | 
+postgres-1                 | 2026-08-19 18:00:21.649 UTC [1] LOG:  starting PostgreSQL 16.15 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+postgres-1                 | 2026-08-19 18:00:21.649 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+postgres-1                 | 2026-08-19 18:00:21.649 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+postgres-1                 | 2026-08-19 18:00:21.655 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+postgres-1                 | 2026-08-19 18:00:21.663 UTC [57] LOG:  database system was shut down at 2026-08-19 18:00:21 UTC
+postgres-1                 | 2026-08-19 18:00:21.670 UTC [1] LOG:  database system is ready to accept connections
+postgres-1                 | 2026-08-19 18:05:21.748 UTC [55] LOG:  checkpoint starting: time
+postgres-1                 | 2026-08-19 18:05:30.704 UTC [55] LOG:  checkpoint complete: wrote 91 buffers (0.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=8.890 s, sync=0.012 s, total=8.957 s; sync files=54, longest=0.002 s, average=0.001 s; distance=438 kB, estimate=438 kB; lsn=0/1993958, redo lsn=0/1993920
+postgres-1                 | 2026-08-19 18:10:21.803 UTC [55] LOG:  checkpoint starting: time
+postgres-1                 | 2026-08-19 18:10:26.671 UTC [55] LOG:  checkpoint complete: wrote 49 buffers (0.3%); 0 WAL file(s) added, 0 removed, 0 recycled; write=4.841 s, sync=0.010 s, total=4.868 s; sync files=37, longest=0.003 s, average=0.001 s; distance=165 kB, estimate=411 kB; lsn=0/19BCDF0, redo lsn=0/19BCDB8
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:06:31.489 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:06:31.634 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:06:31.642 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:06:36.034 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:06:36.182 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:06:36.192 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:06:41.713 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+mammography-model-runner   | INFO:     Started server process [1]
+mammography-agent-fastapi  | INFO:     Started server process [1]
+mammography-agent-fastapi  | INFO:     Waiting for application startup.
+mammography-agent-fastapi  | 2026-08-19 18:00:41,341 INFO APPLICATION_READY {'version': '0.36.0'}
+mammography-agent-fastapi  | INFO:     Application startup complete.
+mammography-agent-fastapi  | INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+mammography-agent-fastapi  | INFO:     127.0.0.1:53994 - "GET /health HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:49976 - "GET /workspace/status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:49980 - "GET /single-cases/storage-status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:49994 - "GET /single-cases/ensemble-config HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:50010 - "GET /single-cases/web-settings HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:43258 - "GET /workspace/status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:43270 - "GET /single-cases/storage-status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:43284 - "GET /single-cases/ensemble-config HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:43294 - "GET /single-cases/web-settings HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:43298 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:43308 - "POST /single-cases/previews HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:43316 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34414 - "GET /workspace/status HTTP/1.1" 200 OK
+mammography-model-runner   | INFO:     Waiting for application startup.
+mammography-model-runner   | 2026-08-19 18:00:21,963 INFO MODEL_RUNNER_READY {'event': 'MODEL_RUNNER_READY', 'bootstrap_mode': 'lazy', 'default_model_device': 'cpu', 'model_devices': {'glam': 'cpu', 'gmic': 'cpu', 'nyu': 'cpu'}, 'gpu_profiles': {'glam': 'blackwell-cu128', 'gmic': 'blackwell-cu128', 'nyu': 'blackwell-cu128'}, 'models': ['glam', 'gmic', 'nyu'], 'docker_daemon_reachable': True, 'docker_host': 'unix:///var/run/docker.sock', 'docker_version': 'Client:\n Version:           29.7.2\n API version:       1.54 (downgraded from 1.55)\n Go version:        go1.26.5\n Git commit:        a7dcaa6\n Built:             Wed Aug  5 18:27:38 2026\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          29.5.3\n  API version:      1.54 (minimum version 1.40)\n  Go version:       go1.26.4\n  Git commit:       285b471\n  Built:            Wed Jun  3 17:59:44 2026\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.4\n  GitCommit:        193637f7ee8ae5f5aa5248f49e7baa3e6164966e\n runc:\n  Version:          1.3.5\n  GitCommit:        v1.3.5-0-g488fc13e\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0', 'docker_error': ''}
+mammography-model-runner   | INFO:     Application startup complete.
+mammography-model-runner   | INFO:     Uvicorn running on http://0.0.0.0:8010 (Press CTRL+C to quit)
+mammography-model-runner   | INFO:     127.0.0.1:55554 - "GET /health HTTP/1.1" 200 OK
+mammography-model-runner   | INFO:     172.19.0.6:32990 - "GET /models HTTP/1.1" 200 OK
+mammography-model-runner   | INFO:     172.19.0.6:44606 - "GET /models HTTP/1.1" 200 OK
+mammography-model-runner   | INFO:     172.19.0.6:41884 - "GET /models HTTP/1.1" 200 OK
+mammography-model-runner   | INFO:     172.19.0.6:47534 - "GET /models HTTP/1.1" 200 OK
+mammography-model-runner   | INFO:     172.19.0.6:47546 - "GET /models HTTP/1.1" 200 OK
+mammography-model-runner   | INFO:     172.19.0.6:49498 - "GET /models HTTP/1.1" 200 OK
+mammography-model-runner   | INFO:     172.19.0.6:33896 - "GET /models HTTP/1.1" 200 OK
+mammography-model-runner   | 2026-08-19 18:07:00,348 INFO MODEL_PREPROCESS_STARTED {'event': 'MODEL_PREPROCESS_STARTED', 'model': 'nyu', 'run_id': 'web-20260819T180654Z-62fdf7ad-orientation-original', 'image': 'mammography-model-nyu:blackwell-cu128', 'image_dir': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/orientation_resolution/original/model_batch/images', 'preprocessed_dir': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/orientation_resolution/original/model_batch/preprocessed/nyu', 'input_images': 4}
+mammography-model-runner   | 2026-08-19 18:07:06,280 INFO MODEL_PREPROCESS_COMPLETED {'event': 'MODEL_PREPROCESS_COMPLETED', 'model': 'nyu', 'run_id': 'web-20260819T180654Z-62fdf7ad-orientation-original', 'center_data': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/orientation_resolution/original/model_batch/preprocessed/nyu/web-20260819T180654Z-62fdf7ad-orientation-original_center_data.pkl', 'elapsed_seconds': 5.590910185000212}
+mammography-model-runner   | INFO:     172.19.0.6:33904 - "POST /models/nyu/preprocess HTTP/1.1" 200 OK
+mammography-model-runner   | 2026-08-19 18:07:06,641 INFO MODEL_RUNTIME_READY {'event': 'MODEL_RUNTIME_READY', 'model': 'gmic', 'run_id': 'web-20260819T180654Z-62fdf7ad-gmic', 'device': 'cpu', 'image': 'mammography-model-gmic:research', 'runtime_prepare_elapsed_seconds': 0.18138897800008635, 'image_ready': True}
+mammography-model-runner   | 2026-08-19 18:07:06,659 INFO MODEL_RUN_STARTED {'event': 'MODEL_RUN_STARTED', 'model': 'gmic', 'run_id': 'web-20260819T180654Z-62fdf7ad-gmic', 'device': 'cpu', 'image': 'mammography-model-gmic:research', 'image_dir': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/images', 'output_file': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/gmic.csv', 'preprocessed_dir': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/preprocessed/gmic', 'input_images': 4}
+mammography-model-runner   | 2026-08-19 18:07:07,026 INFO MODEL_CHILD_CONTAINER_STARTED {'event': 'MODEL_CHILD_CONTAINER_STARTED', 'model': 'gmic', 'run_id': 'web-20260819T180654Z-62fdf7ad-gmic', 'container': 'mammography-inference-gmic-web-20260819t180654z-62fdf7ad-gmic', 'image': 'mammography-model-gmic:research'}
+mammography-model-runner   | 2026-08-19 18:07:07,057 INFO MODEL_COMMAND_STARTED {'event': 'MODEL_COMMAND_STARTED', 'model': 'gmic', 'run_id': 'web-20260819T180654Z-62fdf7ad-gmic', 'container': 'mammography-inference-gmic-web-20260819t180654z-62fdf7ad-gmic', 'device': 'cpu'}
+mammography-model-runner   | 2026-08-19 18:07:44,370 INFO MODEL_COMMAND_COMPLETED {'event': 'MODEL_COMMAND_COMPLETED', 'model': 'gmic', 'run_id': 'web-20260819T180654Z-62fdf7ad-gmic', 'elapsed_seconds': 37.066947636999885, 'avg_gpu_util_percent': None, 'max_gpu_memory_mib': None}
+mammography-model-runner   | 2026-08-19 18:07:44,370 INFO MODEL_RUN_SUCCESS {'event': 'MODEL_RUN_SUCCESS', 'model': 'gmic', 'run_id': 'web-20260819T180654Z-62fdf7ad-gmic', 'output': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/gmic.csv', 'xai_count': 4, 'command_elapsed_seconds': 37.066947636999885, 'runtime_prepare_elapsed_seconds': 0.18138897800008635, 'model_runner_total_elapsed_seconds': 37.91746558500017, 'output_size_bytes': 246, 'max_gpu_memory_mib': None}
+mammography-model-runner   | INFO:     172.19.0.6:45222 - "POST /models/gmic/run HTTP/1.1" 200 OK
+mammography-model-runner   | 2026-08-19 18:07:44,683 INFO MODEL_RUNTIME_READY {'event': 'MODEL_RUNTIME_READY', 'model': 'nyu', 'run_id': 'web-20260819T180654Z-62fdf7ad-nyu', 'device': 'cpu', 'image': 'mammography-model-nyu:research', 'runtime_prepare_elapsed_seconds': 0.17045857899984185, 'image_ready': True}
+mammography-model-runner   | 2026-08-19 18:07:44,699 INFO MODEL_RUN_STARTED {'event': 'MODEL_RUN_STARTED', 'model': 'nyu', 'run_id': 'web-20260819T180654Z-62fdf7ad-nyu', 'device': 'cpu', 'image': 'mammography-model-nyu:research', 'image_dir': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/images', 'output_file': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/nyu.csv', 'preprocessed_dir': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/preprocessed/nyu', 'input_images': 4}
+mammography-model-runner   | 2026-08-19 18:07:45,040 INFO MODEL_CHILD_CONTAINER_STARTED {'event': 'MODEL_CHILD_CONTAINER_STARTED', 'model': 'nyu', 'run_id': 'web-20260819T180654Z-62fdf7ad-nyu', 'container': 'mammography-inference-nyu-web-20260819t180654z-62fdf7ad-nyu', 'image': 'mammography-model-nyu:research'}
+mammography-model-runner   | 2026-08-19 18:07:45,060 INFO MODEL_COMMAND_STARTED {'event': 'MODEL_COMMAND_STARTED', 'model': 'nyu', 'run_id': 'web-20260819T180654Z-62fdf7ad-nyu', 'container': 'mammography-inference-nyu-web-20260819t180654z-62fdf7ad-nyu', 'device': 'cpu'}
+mammography-model-runner   | 2026-08-19 18:08:00,167 INFO MODEL_COMMAND_COMPLETED {'event': 'MODEL_COMMAND_COMPLETED', 'model': 'nyu', 'run_id': 'web-20260819T180654Z-62fdf7ad-nyu', 'elapsed_seconds': 15.106454657000086, 'avg_gpu_util_percent': None, 'max_gpu_memory_mib': None}
+mammography-model-runner   | 2026-08-19 18:08:00,168 INFO MODEL_RUN_SUCCESS {'event': 'MODEL_RUN_SUCCESS', 'model': 'nyu', 'run_id': 'web-20260819T180654Z-62fdf7ad-nyu', 'output': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/nyu.csv', 'xai_count': 0, 'command_elapsed_seconds': 15.106454657000086, 'runtime_prepare_elapsed_seconds': 0.17045857899984185, 'model_runner_total_elapsed_seconds': 15.661916872999882, 'output_size_bytes': 84, 'max_gpu_memory_mib': None}
+mammography-model-runner   | INFO:     172.19.0.6:47802 - "POST /models/nyu/run HTTP/1.1" 200 OK
+mammography-model-runner   | 2026-08-19 18:08:00,502 INFO MODEL_RUNTIME_READY {'event': 'MODEL_RUNTIME_READY', 'model': 'glam', 'run_id': 'web-20260819T180654Z-62fdf7ad-glam', 'device': 'cpu', 'image': 'mammography-model-glam:research', 'runtime_prepare_elapsed_seconds': 0.1781559659998493, 'image_ready': True}
+mammography-model-runner   | 2026-08-19 18:08:00,518 INFO MODEL_RUN_STARTED {'event': 'MODEL_RUN_STARTED', 'model': 'glam', 'run_id': 'web-20260819T180654Z-62fdf7ad-glam', 'device': 'cpu', 'image': 'mammography-model-glam:research', 'image_dir': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/images', 'output_file': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/glam.csv', 'preprocessed_dir': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/preprocessed/glam', 'input_images': 4}
+mammography-model-runner   | 2026-08-19 18:08:00,860 INFO MODEL_CHILD_CONTAINER_STARTED {'event': 'MODEL_CHILD_CONTAINER_STARTED', 'model': 'glam', 'run_id': 'web-20260819T180654Z-62fdf7ad-glam', 'container': 'mammography-inference-glam-web-20260819t180654z-62fdf7ad-glam', 'image': 'mammography-model-glam:research'}
+mammography-model-runner   | 2026-08-19 18:08:00,878 INFO MODEL_COMMAND_STARTED {'event': 'MODEL_COMMAND_STARTED', 'model': 'glam', 'run_id': 'web-20260819T180654Z-62fdf7ad-glam', 'container': 'mammography-inference-glam-web-20260819t180654z-62fdf7ad-glam', 'device': 'cpu'}
+mammography-model-runner   | 2026-08-19 18:08:38,205 INFO MODEL_COMMAND_COMPLETED {'event': 'MODEL_COMMAND_COMPLETED', 'model': 'glam', 'run_id': 'web-20260819T180654Z-62fdf7ad-glam', 'elapsed_seconds': 37.04110621999962, 'avg_gpu_util_percent': None, 'max_gpu_memory_mib': None}
+mammography-model-runner   | 2026-08-19 18:08:38,206 INFO MODEL_RUN_SUCCESS {'event': 'MODEL_RUN_SUCCESS', 'model': 'glam', 'run_id': 'web-20260819T180654Z-62fdf7ad-glam', 'output': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/glam.csv', 'xai_count': 4, 'command_elapsed_seconds': 37.04110621999962, 'runtime_prepare_elapsed_seconds': 0.1781559659998493, 'model_runner_total_elapsed_seconds': 37.88792930499994, 'output_size_bytes': 246, 'max_gpu_memory_mib': None}
+mammography-model-runner   | INFO:     172.19.0.6:51542 - "POST /models/glam/run HTTP/1.1" 200 OK
+mammography-model-runner   | INFO:     172.19.0.6:51250 - "GET /models HTTP/1.1" 200 OK
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:06:41.858 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:06:41.866 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:06:46.107 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:06:46.261 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:06:46.268 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:06:54.645 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:06:54.792 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:06:54.795 Please replace `st.components.v1.html` with `st.iframe`.
+streamlit-1                | 
+streamlit-1                | `st.components.v1.html` will be removed after 2026-06-01.
+streamlit-1                | 2026-08-19 18:08:40.259 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:08:43.267 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:08:43.277 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:08:43.284 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:08:43.300 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:19:51.974 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:02.575 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:05.337 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:05.351 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:10.211 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:10.329 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:10.337 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:14.280 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:14.398 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+mammography-model-runner   | INFO:     172.19.0.6:43660 - "GET /models HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34418 - "GET /single-cases/storage-status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34430 - "GET /single-cases/ensemble-config HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34442 - "GET /single-cases/web-settings HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34456 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34458 - "POST /single-cases/previews HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34472 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38008 - "GET /workspace/status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38014 - "GET /single-cases/storage-status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38030 - "GET /single-cases/ensemble-config HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38040 - "GET /single-cases/web-settings HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38042 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38052 - "POST /single-cases/previews HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38064 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38066 - "GET /workspace/status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38080 - "GET /single-cases/storage-status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38090 - "GET /single-cases/ensemble-config HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38102 - "GET /single-cases/web-settings HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38112 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38122 - "POST /single-cases/previews HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38134 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51822 - "GET /workspace/status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51836 - "GET /single-cases/storage-status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51850 - "GET /single-cases/ensemble-config HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51864 - "GET /single-cases/web-settings HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51872 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51884 - "POST /single-cases/previews HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51898 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:50854 - "GET /workspace/status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:50864 - "GET /single-cases/storage-status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:50870 - "GET /single-cases/ensemble-config HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:50880 - "GET /single-cases/web-settings HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:50888 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:50890 - "POST /single-cases/previews HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:50900 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:50922 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | 2026-08-19 18:06:54,817 INFO WEB_SINGLE_CASE_STARTED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'uploaded_dicoms': 4, 'inference_device': 'cpu'}
+mammography-agent-fastapi  | 2026-08-19 18:06:54,817 INFO WEB_CONFIGURATION_RESOLVED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'inference_device': 'cpu', 'weights': {'gmic': 0.333333, 'nyu': 0.333333, 'glam': 0.333334}, 'weights_source': 'BASELINE', 'threshold': 0.5, 'threshold_source': 'BASELINE', 'discordance_threshold': 0.3, 'batch_configuration_mutated': False}
+mammography-agent-fastapi  | 2026-08-19 18:06:54,817 INFO WEB_STAGE_STARTED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'stage': 'PREPARATION', 'message': 'Preparando el estudio mamográfico.'}
+mammography-agent-fastapi  | INFO:     172.19.0.7:50926 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:50930 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:50944 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:50956 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:50958 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:50968 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | 2026-08-19 18:07:00,199 INFO WEB_STAGE_COMPLETED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'stage': 'PREPARATION', 'elapsed_seconds': 5.381778677000057}
+mammography-agent-fastapi  | 2026-08-19 18:07:00,199 INFO WEB_STAGE_STARTED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'stage': 'ORIENTATION', 'message': 'Aplicando la política de orientación del estudio.'}
+mammography-agent-fastapi  | INFO:     172.19.0.7:50970 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:50984 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35182 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35186 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35194 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:14.408 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:19.055 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:19.176 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:19.186 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:23.033 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:23.154 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:23.160 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:25.695 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:25.813 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:20:25.816 Please replace `st.components.v1.html` with `st.iframe`.
+streamlit-1                | 
+streamlit-1                | `st.components.v1.html` will be removed after 2026-06-01.
+streamlit-1                | 2026-08-19 18:22:09.212 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:22:12.152 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:22:12.165 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:22:12.168 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+streamlit-1                | 2026-08-19 18:22:12.176 Please replace `use_container_width` with `width`.
+streamlit-1                | 
+streamlit-1                | `use_container_width` will be removed after 2025-12-31.
+streamlit-1                | 
+streamlit-1                | For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+mammography-agent-fastapi  | INFO:     172.19.0.7:35206 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35218 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35222 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | 2026-08-19 18:07:06,431 INFO WEB_STAGE_COMPLETED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'stage': 'ORIENTATION', 'elapsed_seconds': 6.2316516430000775}
+mammography-agent-fastapi  | 2026-08-19 18:07:06,432 INFO WEB_STAGE_PROGRESS {'run_id': 'web-20260819T180654Z-62fdf7ad', 'stage': 'MODEL_INPUT_PREPARATION', 'state': 'RUNNING', 'elapsed_seconds': None}
+mammography-agent-fastapi  | 2026-08-19 18:07:06,442 INFO WEB_STAGE_PROGRESS {'run_id': 'web-20260819T180654Z-62fdf7ad', 'stage': 'MODEL_INPUT_PREPARATION', 'state': 'SUCCESS', 'elapsed_seconds': 0.010622406000038609}
+mammography-agent-fastapi  | 2026-08-19 18:07:06,443 INFO MODEL_INFERENCE_STARTED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'model': 'gmic', 'studies': 1, 'preprocessed_dir': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/preprocessed/gmic'}
+mammography-agent-fastapi  | 2026-08-19 18:07:06,443 INFO WEB_MODEL_PROGRESS {'run_id': 'web-20260819T180654Z-62fdf7ad', 'model': 'gmic', 'state': 'RUNNING', 'elapsed_seconds': None, 'inference_device': 'cpu'}
+mammography-agent-fastapi  | INFO:     172.19.0.7:35224 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35226 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35234 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35248 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35262 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35270 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35276 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:55150 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:55166 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:55176 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:55182 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:55194 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:55210 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:55224 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:55228 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:55238 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-model-runner   | INFO:     172.19.0.6:46702 - "GET /models HTTP/1.1" 200 OK
+mammography-model-runner   | INFO:     172.19.0.6:46712 - "GET /models HTTP/1.1" 200 OK
+mammography-model-runner   | INFO:     172.19.0.6:47456 - "GET /models HTTP/1.1" 200 OK
+mammography-model-runner   | INFO:     172.19.0.6:47462 - "GET /models HTTP/1.1" 200 OK
+mammography-model-runner   | INFO:     172.19.0.6:40854 - "GET /models HTTP/1.1" 200 OK
+mammography-model-runner   | INFO:     172.19.0.6:40864 - "GET /models HTTP/1.1" 200 OK
+mammography-model-runner   | 2026-08-19 18:20:30,230 INFO MODEL_PREPROCESS_STARTED {'event': 'MODEL_PREPROCESS_STARTED', 'model': 'nyu', 'run_id': 'web-20260819T182025Z-ad32c621-orientation-original', 'image': 'mammography-model-nyu:blackwell-cu128', 'image_dir': '/web-scratch/runs/web-20260819T182025Z-ad32c621/orientation_resolution/original/model_batch/images', 'preprocessed_dir': '/web-scratch/runs/web-20260819T182025Z-ad32c621/orientation_resolution/original/model_batch/preprocessed/nyu', 'input_images': 4}
+mammography-model-runner   | 2026-08-19 18:20:35,636 INFO MODEL_PREPROCESS_COMPLETED {'event': 'MODEL_PREPROCESS_COMPLETED', 'model': 'nyu', 'run_id': 'web-20260819T182025Z-ad32c621-orientation-original', 'center_data': '/web-scratch/runs/web-20260819T182025Z-ad32c621/orientation_resolution/original/model_batch/preprocessed/nyu/web-20260819T182025Z-ad32c621-orientation-original_center_data.pkl', 'elapsed_seconds': 5.081678352999916}
+mammography-model-runner   | INFO:     172.19.0.6:40866 - "POST /models/nyu/preprocess HTTP/1.1" 200 OK
+mammography-model-runner   | 2026-08-19 18:20:35,920 INFO MODEL_PREPROCESS_STARTED {'event': 'MODEL_PREPROCESS_STARTED', 'model': 'nyu', 'run_id': 'web-20260819T182025Z-ad32c621-orientation-counterfactual', 'image': 'mammography-model-nyu:blackwell-cu128', 'image_dir': '/web-scratch/runs/web-20260819T182025Z-ad32c621/orientation_resolution/counterfactual/model_batch/images', 'preprocessed_dir': '/web-scratch/runs/web-20260819T182025Z-ad32c621/orientation_resolution/counterfactual/model_batch/preprocessed/nyu', 'input_images': 4}
+mammography-model-runner   | 2026-08-19 18:20:40,276 INFO MODEL_PREPROCESS_COMPLETED {'event': 'MODEL_PREPROCESS_COMPLETED', 'model': 'nyu', 'run_id': 'web-20260819T182025Z-ad32c621-orientation-counterfactual', 'center_data': '/web-scratch/runs/web-20260819T182025Z-ad32c621/orientation_resolution/counterfactual/model_batch/preprocessed/nyu/web-20260819T182025Z-ad32c621-orientation-counterfactual_center_data.pkl', 'elapsed_seconds': 4.119437500000004}
+mammography-model-runner   | INFO:     172.19.0.6:46262 - "POST /models/nyu/preprocess HTTP/1.1" 200 OK
+mammography-model-runner   | 2026-08-19 18:20:40,690 INFO MODEL_RUNTIME_READY {'event': 'MODEL_RUNTIME_READY', 'model': 'gmic', 'run_id': 'web-20260819T182025Z-ad32c621-gmic', 'device': 'cpu', 'image': 'mammography-model-gmic:research', 'runtime_prepare_elapsed_seconds': 0.2164562439998008, 'image_ready': True}
+mammography-model-runner   | 2026-08-19 18:20:40,710 INFO MODEL_RUN_STARTED {'event': 'MODEL_RUN_STARTED', 'model': 'gmic', 'run_id': 'web-20260819T182025Z-ad32c621-gmic', 'device': 'cpu', 'image': 'mammography-model-gmic:research', 'image_dir': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/images', 'output_file': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/gmic.csv', 'preprocessed_dir': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/preprocessed/gmic', 'input_images': 4}
+mammography-model-runner   | 2026-08-19 18:20:41,053 INFO MODEL_CHILD_CONTAINER_STARTED {'event': 'MODEL_CHILD_CONTAINER_STARTED', 'model': 'gmic', 'run_id': 'web-20260819T182025Z-ad32c621-gmic', 'container': 'mammography-inference-gmic-web-20260819t182025z-ad32c621-gmic', 'image': 'mammography-model-gmic:research'}
+mammography-model-runner   | 2026-08-19 18:20:41,083 INFO MODEL_COMMAND_STARTED {'event': 'MODEL_COMMAND_STARTED', 'model': 'gmic', 'run_id': 'web-20260819T182025Z-ad32c621-gmic', 'container': 'mammography-inference-gmic-web-20260819t182025z-ad32c621-gmic', 'device': 'cpu'}
+mammography-model-runner   | 2026-08-19 18:21:17,012 INFO MODEL_COMMAND_COMPLETED {'event': 'MODEL_COMMAND_COMPLETED', 'model': 'gmic', 'run_id': 'web-20260819T182025Z-ad32c621-gmic', 'elapsed_seconds': 35.92864319599994, 'avg_gpu_util_percent': None, 'max_gpu_memory_mib': None}
+mammography-model-runner   | 2026-08-19 18:21:17,012 INFO MODEL_RUN_SUCCESS {'event': 'MODEL_RUN_SUCCESS', 'model': 'gmic', 'run_id': 'web-20260819T182025Z-ad32c621-gmic', 'output': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/gmic.csv', 'xai_count': 4, 'command_elapsed_seconds': 35.92864319599994, 'runtime_prepare_elapsed_seconds': 0.2164562439998008, 'model_runner_total_elapsed_seconds': 36.54942728900005, 'output_size_bytes': 246, 'max_gpu_memory_mib': None}
+mammography-model-runner   | INFO:     172.19.0.6:46268 - "POST /models/gmic/run HTTP/1.1" 200 OK
+mammography-model-runner   | 2026-08-19 18:21:17,343 INFO MODEL_RUNTIME_READY {'event': 'MODEL_RUNTIME_READY', 'model': 'nyu', 'run_id': 'web-20260819T182025Z-ad32c621-nyu', 'device': 'cpu', 'image': 'mammography-model-nyu:research', 'runtime_prepare_elapsed_seconds': 0.17772289899994576, 'image_ready': True}
+mammography-model-runner   | 2026-08-19 18:21:17,361 INFO MODEL_RUN_STARTED {'event': 'MODEL_RUN_STARTED', 'model': 'nyu', 'run_id': 'web-20260819T182025Z-ad32c621-nyu', 'device': 'cpu', 'image': 'mammography-model-nyu:research', 'image_dir': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/images', 'output_file': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/nyu.csv', 'preprocessed_dir': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/preprocessed/nyu', 'input_images': 4}
+mammography-model-runner   | 2026-08-19 18:21:17,657 INFO MODEL_CHILD_CONTAINER_STARTED {'event': 'MODEL_CHILD_CONTAINER_STARTED', 'model': 'nyu', 'run_id': 'web-20260819T182025Z-ad32c621-nyu', 'container': 'mammography-inference-nyu-web-20260819t182025z-ad32c621-nyu', 'image': 'mammography-model-nyu:research'}
+mammography-model-runner   | 2026-08-19 18:21:17,682 INFO MODEL_COMMAND_STARTED {'event': 'MODEL_COMMAND_STARTED', 'model': 'nyu', 'run_id': 'web-20260819T182025Z-ad32c621-nyu', 'container': 'mammography-inference-nyu-web-20260819t182025z-ad32c621-nyu', 'device': 'cpu'}
+mammography-model-runner   | 2026-08-19 18:21:31,810 INFO MODEL_COMMAND_COMPLETED {'event': 'MODEL_COMMAND_COMPLETED', 'model': 'nyu', 'run_id': 'web-20260819T182025Z-ad32c621-nyu', 'elapsed_seconds': 14.12769871699993, 'avg_gpu_util_percent': None, 'max_gpu_memory_mib': None}
+mammography-model-runner   | 2026-08-19 18:21:31,811 INFO MODEL_RUN_SUCCESS {'event': 'MODEL_RUN_SUCCESS', 'model': 'nyu', 'run_id': 'web-20260819T182025Z-ad32c621-nyu', 'output': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/nyu.csv', 'xai_count': 0, 'command_elapsed_seconds': 14.12769871699993, 'runtime_prepare_elapsed_seconds': 0.17772289899994576, 'model_runner_total_elapsed_seconds': 14.652319484000145, 'output_size_bytes': 84, 'max_gpu_memory_mib': None}
+mammography-model-runner   | INFO:     172.19.0.6:36994 - "POST /models/nyu/run HTTP/1.1" 200 OK
+mammography-model-runner   | 2026-08-19 18:21:32,202 INFO MODEL_RUNTIME_READY {'event': 'MODEL_RUNTIME_READY', 'model': 'glam', 'run_id': 'web-20260819T182025Z-ad32c621-glam', 'device': 'cpu', 'image': 'mammography-model-glam:research', 'runtime_prepare_elapsed_seconds': 0.18162059799988128, 'image_ready': True}
+mammography-model-runner   | 2026-08-19 18:21:32,219 INFO MODEL_RUN_STARTED {'event': 'MODEL_RUN_STARTED', 'model': 'glam', 'run_id': 'web-20260819T182025Z-ad32c621-glam', 'device': 'cpu', 'image': 'mammography-model-glam:research', 'image_dir': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/images', 'output_file': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/glam.csv', 'preprocessed_dir': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/preprocessed/glam', 'input_images': 4}
+mammography-model-runner   | 2026-08-19 18:21:32,499 INFO MODEL_CHILD_CONTAINER_STARTED {'event': 'MODEL_CHILD_CONTAINER_STARTED', 'model': 'glam', 'run_id': 'web-20260819T182025Z-ad32c621-glam', 'container': 'mammography-inference-glam-web-20260819t182025z-ad32c621-glam', 'image': 'mammography-model-glam:research'}
+mammography-model-runner   | 2026-08-19 18:21:32,521 INFO MODEL_COMMAND_STARTED {'event': 'MODEL_COMMAND_STARTED', 'model': 'glam', 'run_id': 'web-20260819T182025Z-ad32c621-glam', 'container': 'mammography-inference-glam-web-20260819t182025z-ad32c621-glam', 'device': 'cpu'}
+mammography-model-runner   | 2026-08-19 18:22:07,422 INFO MODEL_COMMAND_COMPLETED {'event': 'MODEL_COMMAND_COMPLETED', 'model': 'glam', 'run_id': 'web-20260819T182025Z-ad32c621-glam', 'elapsed_seconds': 34.900478655999905, 'avg_gpu_util_percent': None, 'max_gpu_memory_mib': None}
+mammography-model-runner   | 2026-08-19 18:22:07,423 INFO MODEL_RUN_SUCCESS {'event': 'MODEL_RUN_SUCCESS', 'model': 'glam', 'run_id': 'web-20260819T182025Z-ad32c621-glam', 'output': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/glam.csv', 'xai_count': 4, 'command_elapsed_seconds': 34.900478655999905, 'runtime_prepare_elapsed_seconds': 0.18162059799988128, 'model_runner_total_elapsed_seconds': 35.40901916999974, 'output_size_bytes': 246, 'max_gpu_memory_mib': None}
+mammography-model-runner   | INFO:     172.19.0.6:56572 - "POST /models/glam/run HTTP/1.1" 200 OK
+mammography-model-runner   | INFO:     172.19.0.6:42138 - "GET /models HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:55252 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:55266 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:55278 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:55282 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:52530 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:52544 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:52546 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:52562 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:52566 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:52582 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:52586 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:52588 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:52604 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:52606 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:52610 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:52624 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:52634 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:52642 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48278 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48280 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48284 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48286 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48296 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48302 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48314 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48318 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48326 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48336 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48342 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48346 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48350 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34120 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34136 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34144 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | 2026-08-19 18:07:44,496 INFO MODEL_INFERENCE_COMPLETED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'model': 'gmic', 'xai_count': 4, 'elapsed_seconds': 37.066947636999885, 'max_gpu_memory_mib': None, 'output_file': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/gmic.csv'}
+mammography-agent-fastapi  | 2026-08-19 18:07:44,496 INFO WEB_MODEL_WALL_TIME {'run_id': 'web-20260819T180654Z-62fdf7ad', 'model': 'gmic', 'elapsed_seconds': 38.05301482999994}
+mammography-agent-fastapi  | 2026-08-19 18:07:44,496 INFO WEB_MODEL_PROGRESS {'run_id': 'web-20260819T180654Z-62fdf7ad', 'model': 'gmic', 'state': 'SUCCESS', 'elapsed_seconds': 38.05301482999994, 'inference_device': 'cpu'}
+mammography-agent-fastapi  | 2026-08-19 18:07:44,497 INFO MODEL_INFERENCE_STARTED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'model': 'nyu', 'studies': 1, 'preprocessed_dir': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/preprocessed/nyu'}
+mammography-agent-fastapi  | 2026-08-19 18:07:44,497 INFO WEB_MODEL_PROGRESS {'run_id': 'web-20260819T180654Z-62fdf7ad', 'model': 'nyu', 'state': 'RUNNING', 'elapsed_seconds': None, 'inference_device': 'cpu'}
+mammography-agent-fastapi  | INFO:     172.19.0.7:34152 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34158 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34162 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34176 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34184 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34190 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34196 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34202 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34216 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:34224 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:36478 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:36490 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:36502 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:36510 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:36514 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:36530 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:36544 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:36548 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:36558 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:36568 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:36578 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | 2026-08-19 18:08:00,308 INFO MODEL_INFERENCE_COMPLETED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'model': 'nyu', 'xai_count': 0, 'elapsed_seconds': 15.106454657000086, 'max_gpu_memory_mib': None, 'output_file': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/nyu.csv'}
+mammography-agent-fastapi  | 2026-08-19 18:08:00,308 INFO WEB_MODEL_WALL_TIME {'run_id': 'web-20260819T180654Z-62fdf7ad', 'model': 'nyu', 'elapsed_seconds': 15.810884548000104}
+mammography-agent-fastapi  | 2026-08-19 18:08:00,308 INFO WEB_MODEL_PROGRESS {'run_id': 'web-20260819T180654Z-62fdf7ad', 'model': 'nyu', 'state': 'SUCCESS', 'elapsed_seconds': 15.810884548000104, 'inference_device': 'cpu'}
+mammography-agent-fastapi  | 2026-08-19 18:08:00,309 INFO MODEL_INFERENCE_STARTED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'model': 'glam', 'studies': 1, 'preprocessed_dir': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/preprocessed/glam'}
+mammography-agent-fastapi  | 2026-08-19 18:08:00,309 INFO WEB_MODEL_PROGRESS {'run_id': 'web-20260819T180654Z-62fdf7ad', 'model': 'glam', 'state': 'RUNNING', 'elapsed_seconds': None, 'inference_device': 'cpu'}
+mammography-agent-fastapi  | INFO:     172.19.0.7:36586 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:36592 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38176 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38188 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38200 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38204 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38210 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38220 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38234 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38242 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38250 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38254 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38256 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38266 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38272 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38274 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42924 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42932 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42940 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42944 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42956 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42966 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42982 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42986 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42988 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42994 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:43006 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:43022 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:43038 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:45360 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:45362 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:45376 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:45378 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:45390 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:45394 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:45398 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:45404 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:45410 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:45422 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:45424 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:45440 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:45452 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38108 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38122 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38138 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38154 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38158 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38168 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38182 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38194 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38202 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | 2026-08-19 18:08:38,444 INFO MODEL_INFERENCE_COMPLETED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'model': 'glam', 'xai_count': 4, 'elapsed_seconds': 37.04110621999962, 'max_gpu_memory_mib': None, 'output_file': '/web-scratch/runs/web-20260819T180654Z-62fdf7ad/model_batch/glam.csv'}
+mammography-agent-fastapi  | 2026-08-19 18:08:38,444 INFO WEB_MODEL_WALL_TIME {'run_id': 'web-20260819T180654Z-62fdf7ad', 'model': 'glam', 'elapsed_seconds': 38.135041509000075}
+mammography-agent-fastapi  | 2026-08-19 18:08:38,444 INFO WEB_MODEL_PROGRESS {'run_id': 'web-20260819T180654Z-62fdf7ad', 'model': 'glam', 'state': 'SUCCESS', 'elapsed_seconds': 38.135041509000075, 'inference_device': 'cpu'}
+mammography-agent-fastapi  | 2026-08-19 18:08:38,463 INFO WEB_MODEL_SCORES_COLLECTED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'gmic': 0.3482, 'nyu': 0.2743, 'glam': 0.0891}
+mammography-agent-fastapi  | 2026-08-19 18:08:38,463 INFO WEB_STAGE_STARTED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'stage': 'ENSEMBLE', 'message': 'Integrando las probabilidades de los tres modelos.'}
+mammography-agent-fastapi  | 2026-08-19 18:08:38,463 INFO WEB_STAGE_COMPLETED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'stage': 'ENSEMBLE', 'elapsed_seconds': 0.00019669499988594907}
+mammography-agent-fastapi  | 2026-08-19 18:08:38,463 INFO WEB_ENSEMBLE_COMPUTED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'ensemble_malignancy_score': 0.23719985189999998, 'classification': 'NO_CANCER', 'threshold': 0.5, 'threshold_source': 'BASELINE', 'weights': {'gmic': 0.333333, 'nyu': 0.333333, 'glam': 0.333334}, 'weights_source': 'BASELINE', 'model_range': 0.2591, 'discordance': False}
+mammography-agent-fastapi  | 2026-08-19 18:08:38,467 INFO WEB_STAGE_STARTED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'stage': 'PERSISTENCE', 'message': 'Registrando el resultado de la evaluación.'}
+mammography-agent-fastapi  | INFO:     172.19.0.7:38206 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | 2026-08-19 18:08:39,115 INFO WEB_MINIO_PERSISTED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'bucket': 'mammography-web', 'prefix': 'runs/web-20260819T180654Z-62fdf7ad', 'objects': 15}
+mammography-agent-fastapi  | 2026-08-19 18:08:39,116 INFO WEB_MINIO_PERSISTENCE_COMPLETED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'status': 'SUCCESS', 'bucket': 'mammography-web', 'prefix': 'runs/web-20260819T180654Z-62fdf7ad', 'object_count': 15}
+mammography-agent-fastapi  | 2026-08-19 18:08:39,176 INFO WEB_POSTGRESQL_PERSISTENCE_COMPLETED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'status': 'SUCCESS'}
+mammography-agent-fastapi  | 2026-08-19 18:08:39,176 INFO WEB_STAGE_COMPLETED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'stage': 'PERSISTENCE', 'elapsed_seconds': 0.7087386149996746}
+mammography-agent-fastapi  | 2026-08-19 18:08:39,189 INFO WEB_SINGLE_CASE_COMPLETED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'classification': 'NO_CANCER', 'ensemble_malignancy_score': 0.23719985189999998, 'minio_status': 'SUCCESS', 'overall_elapsed_seconds': 104.36138939900002, 'inference_device': 'cpu', 'threshold': 0.5, 'threshold_source': 'BASELINE', 'weights_source': 'BASELINE'}
+mammography-agent-fastapi  | 2026-08-19 18:08:39,297 INFO WEB_SCRATCH_CLEANUP_COMPLETED {'run_id': 'web-20260819T180654Z-62fdf7ad', 'scratch_retained': False}
+mammography-agent-fastapi  | INFO:     172.19.0.7:50914 - "POST /single-cases/run HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38218 - "GET /single-cases/progress/web-20260819T180654Z-62fdf7ad HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38230 - "GET /workspace/status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38240 - "GET /single-cases/storage-status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38244 - "GET /single-cases/ensemble-config HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38252 - "GET /single-cases/web-settings HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38258 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38264 - "POST /single-cases/previews HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:33418 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:38706 - "GET /workspace/status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:33908 - "GET /single-cases/storage-status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:33910 - "GET /single-cases/ensemble-config HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:33914 - "GET /single-cases/web-settings HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:49738 - "GET /workspace/status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:49744 - "GET /single-cases/storage-status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:49750 - "GET /single-cases/ensemble-config HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:49760 - "GET /single-cases/web-settings HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:49776 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:49790 - "POST /single-cases/previews HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:49796 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:49812 - "GET /workspace/status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:49828 - "GET /single-cases/storage-status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:49830 - "GET /single-cases/ensemble-config HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:49844 - "GET /single-cases/web-settings HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:49848 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:49858 - "POST /single-cases/previews HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:49866 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51222 - "GET /workspace/status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51224 - "GET /single-cases/storage-status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51228 - "GET /single-cases/ensemble-config HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51238 - "GET /single-cases/web-settings HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51252 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51266 - "POST /single-cases/previews HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51282 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51292 - "GET /workspace/status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51308 - "GET /single-cases/storage-status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51318 - "GET /single-cases/ensemble-config HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51328 - "GET /single-cases/web-settings HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51336 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51338 - "POST /single-cases/previews HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:51340 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41880 - "GET /workspace/status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41888 - "GET /single-cases/storage-status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41896 - "GET /single-cases/ensemble-config HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41910 - "GET /single-cases/web-settings HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41920 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41922 - "POST /single-cases/previews HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41934 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41950 - "GET /workspace/status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41956 - "GET /single-cases/storage-status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41962 - "GET /single-cases/ensemble-config HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41972 - "GET /single-cases/web-settings HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41984 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41992 - "POST /single-cases/previews HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42008 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42026 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | 2026-08-19 18:20:25,830 INFO WEB_SINGLE_CASE_STARTED {'run_id': 'web-20260819T182025Z-ad32c621', 'uploaded_dicoms': 4, 'inference_device': 'cpu'}
+mammography-agent-fastapi  | 2026-08-19 18:20:25,830 INFO WEB_CONFIGURATION_RESOLVED {'run_id': 'web-20260819T182025Z-ad32c621', 'inference_device': 'cpu', 'weights': {'gmic': 0.333333, 'nyu': 0.333333, 'glam': 0.333334}, 'weights_source': 'BASELINE', 'threshold': 0.5, 'threshold_source': 'BASELINE', 'discordance_threshold': 0.3, 'batch_configuration_mutated': False}
+mammography-agent-fastapi  | 2026-08-19 18:20:25,830 INFO WEB_STAGE_STARTED {'run_id': 'web-20260819T182025Z-ad32c621', 'stage': 'PREPARATION', 'message': 'Preparando el estudio mamográfico.'}
+mammography-agent-fastapi  | INFO:     172.19.0.7:42032 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42040 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42044 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42054 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42062 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | 2026-08-19 18:20:30,094 INFO WEB_STAGE_COMPLETED {'run_id': 'web-20260819T182025Z-ad32c621', 'stage': 'PREPARATION', 'elapsed_seconds': 4.263761026999873}
+mammography-agent-fastapi  | 2026-08-19 18:20:30,094 INFO WEB_STAGE_STARTED {'run_id': 'web-20260819T182025Z-ad32c621', 'stage': 'ORIENTATION', 'message': 'Aplicando la política de orientación del estudio.'}
+mammography-agent-fastapi  | INFO:     172.19.0.7:42064 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42070 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39816 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39830 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39834 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39848 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39862 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39874 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39888 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39894 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39900 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39910 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39914 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39926 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | 2026-08-19 18:20:40,442 INFO WEB_STAGE_COMPLETED {'run_id': 'web-20260819T182025Z-ad32c621', 'stage': 'ORIENTATION', 'elapsed_seconds': 10.34833109400006}
+mammography-agent-fastapi  | 2026-08-19 18:20:40,443 INFO WEB_STAGE_PROGRESS {'run_id': 'web-20260819T182025Z-ad32c621', 'stage': 'MODEL_INPUT_PREPARATION', 'state': 'RUNNING', 'elapsed_seconds': None}
+mammography-agent-fastapi  | 2026-08-19 18:20:40,452 INFO WEB_STAGE_PROGRESS {'run_id': 'web-20260819T182025Z-ad32c621', 'stage': 'MODEL_INPUT_PREPARATION', 'state': 'SUCCESS', 'elapsed_seconds': 0.008759026999996422}
+mammography-agent-fastapi  | 2026-08-19 18:20:40,453 INFO MODEL_INFERENCE_STARTED {'run_id': 'web-20260819T182025Z-ad32c621', 'model': 'gmic', 'studies': 1, 'preprocessed_dir': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/preprocessed/gmic'}
+mammography-agent-fastapi  | 2026-08-19 18:20:40,453 INFO WEB_MODEL_PROGRESS {'run_id': 'web-20260819T182025Z-ad32c621', 'model': 'gmic', 'state': 'RUNNING', 'elapsed_seconds': None, 'inference_device': 'cpu'}
+mammography-agent-fastapi  | INFO:     172.19.0.7:39930 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35692 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35708 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35724 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35730 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35736 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35748 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35760 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35766 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35778 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35784 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35798 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35800 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35802 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:35804 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39282 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39292 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39298 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39312 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39324 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39338 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39350 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39358 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39364 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39370 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39378 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39390 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:39402 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42206 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42208 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42220 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42236 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42240 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42254 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42260 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42276 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42290 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42306 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42312 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42322 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42332 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:54256 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:54264 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:54274 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:54280 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:54294 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:54300 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:54304 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | 2026-08-19 18:21:17,149 INFO MODEL_INFERENCE_COMPLETED {'run_id': 'web-20260819T182025Z-ad32c621', 'model': 'gmic', 'xai_count': 4, 'elapsed_seconds': 35.92864319599994, 'max_gpu_memory_mib': None, 'output_file': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/gmic.csv'}
+mammography-agent-fastapi  | 2026-08-19 18:21:17,149 INFO WEB_MODEL_WALL_TIME {'run_id': 'web-20260819T182025Z-ad32c621', 'model': 'gmic', 'elapsed_seconds': 36.69574440699989}
+mammography-agent-fastapi  | 2026-08-19 18:21:17,149 INFO WEB_MODEL_PROGRESS {'run_id': 'web-20260819T182025Z-ad32c621', 'model': 'gmic', 'state': 'SUCCESS', 'elapsed_seconds': 36.69574440699989, 'inference_device': 'cpu'}
+mammography-agent-fastapi  | 2026-08-19 18:21:17,149 INFO MODEL_INFERENCE_STARTED {'run_id': 'web-20260819T182025Z-ad32c621', 'model': 'nyu', 'studies': 1, 'preprocessed_dir': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/preprocessed/nyu'}
+mammography-agent-fastapi  | 2026-08-19 18:21:17,149 INFO WEB_MODEL_PROGRESS {'run_id': 'web-20260819T182025Z-ad32c621', 'model': 'nyu', 'state': 'RUNNING', 'elapsed_seconds': None, 'inference_device': 'cpu'}
+mammography-agent-fastapi  | INFO:     172.19.0.7:54320 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:54326 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:54330 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:54336 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:54340 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:54350 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:57586 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:57598 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:57606 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:57620 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:57624 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:57626 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:57638 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:57640 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:57652 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:57658 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:57662 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:57664 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:57680 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:57694 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | 2026-08-19 18:21:32,004 INFO MODEL_INFERENCE_COMPLETED {'run_id': 'web-20260819T182025Z-ad32c621', 'model': 'nyu', 'xai_count': 0, 'elapsed_seconds': 14.12769871699993, 'max_gpu_memory_mib': None, 'output_file': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/nyu.csv'}
+mammography-agent-fastapi  | 2026-08-19 18:21:32,004 INFO WEB_MODEL_WALL_TIME {'run_id': 'web-20260819T182025Z-ad32c621', 'model': 'nyu', 'elapsed_seconds': 14.85466407199965}
+mammography-agent-fastapi  | 2026-08-19 18:21:32,004 INFO WEB_MODEL_PROGRESS {'run_id': 'web-20260819T182025Z-ad32c621', 'model': 'nyu', 'state': 'SUCCESS', 'elapsed_seconds': 14.85466407199965, 'inference_device': 'cpu'}
+mammography-agent-fastapi  | 2026-08-19 18:21:32,005 INFO MODEL_INFERENCE_STARTED {'run_id': 'web-20260819T182025Z-ad32c621', 'model': 'glam', 'studies': 1, 'preprocessed_dir': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/preprocessed/glam'}
+mammography-agent-fastapi  | 2026-08-19 18:21:32,005 INFO WEB_MODEL_PROGRESS {'run_id': 'web-20260819T182025Z-ad32c621', 'model': 'glam', 'state': 'RUNNING', 'elapsed_seconds': None, 'inference_device': 'cpu'}
+mammography-agent-fastapi  | INFO:     172.19.0.7:41798 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41800 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41814 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41822 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41832 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41844 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41854 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41870 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41872 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41874 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41878 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41880 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:41896 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42584 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42596 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42612 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42622 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42628 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42642 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42646 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42650 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42654 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42664 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42668 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42682 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:42684 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48172 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48186 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48202 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48208 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48214 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48228 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48232 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48236 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48250 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48260 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48266 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48272 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:48282 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:53804 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:53810 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:53822 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:53826 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:53834 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:53836 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:53838 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:53854 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | 2026-08-19 18:22:07,641 INFO MODEL_INFERENCE_COMPLETED {'run_id': 'web-20260819T182025Z-ad32c621', 'model': 'glam', 'xai_count': 4, 'elapsed_seconds': 34.900478655999905, 'max_gpu_memory_mib': None, 'output_file': '/web-scratch/runs/web-20260819T182025Z-ad32c621/model_batch/glam.csv'}
+mammography-agent-fastapi  | 2026-08-19 18:22:07,641 INFO WEB_MODEL_WALL_TIME {'run_id': 'web-20260819T182025Z-ad32c621', 'model': 'glam', 'elapsed_seconds': 35.63609429099961}
+mammography-agent-fastapi  | 2026-08-19 18:22:07,642 INFO WEB_MODEL_PROGRESS {'run_id': 'web-20260819T182025Z-ad32c621', 'model': 'glam', 'state': 'SUCCESS', 'elapsed_seconds': 35.63609429099961, 'inference_device': 'cpu'}
+mammography-agent-fastapi  | 2026-08-19 18:22:07,666 INFO WEB_MODEL_SCORES_COLLECTED {'run_id': 'web-20260819T182025Z-ad32c621', 'gmic': 0.9753, 'nyu': 0.8929, 'glam': 0.3908}
+mammography-agent-fastapi  | 2026-08-19 18:22:07,666 INFO WEB_STAGE_STARTED {'run_id': 'web-20260819T182025Z-ad32c621', 'stage': 'ENSEMBLE', 'message': 'Integrando las probabilidades de los tres modelos.'}
+mammography-agent-fastapi  | 2026-08-19 18:22:07,666 INFO WEB_STAGE_COMPLETED {'run_id': 'web-20260819T182025Z-ad32c621', 'stage': 'ENSEMBLE', 'elapsed_seconds': 0.00019819599992842996}
+mammography-agent-fastapi  | 2026-08-19 18:22:07,666 INFO WEB_ENSEMBLE_COMPUTED {'run_id': 'web-20260819T182025Z-ad32c621', 'ensemble_malignancy_score': 0.7529996377999999, 'classification': 'CANCER', 'threshold': 0.5, 'threshold_source': 'BASELINE', 'weights': {'gmic': 0.333333, 'nyu': 0.333333, 'glam': 0.333334}, 'weights_source': 'BASELINE', 'model_range': 0.5845, 'discordance': True}
+mammography-agent-fastapi  | 2026-08-19 18:22:07,669 INFO WEB_STAGE_STARTED {'run_id': 'web-20260819T182025Z-ad32c621', 'stage': 'PERSISTENCE', 'message': 'Registrando el resultado de la evaluación.'}
+mammography-agent-fastapi  | INFO:     172.19.0.7:53868 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | 2026-08-19 18:22:08,172 INFO WEB_MINIO_PERSISTED {'run_id': 'web-20260819T182025Z-ad32c621', 'bucket': 'mammography-web', 'prefix': 'runs/web-20260819T182025Z-ad32c621', 'objects': 15}
+mammography-agent-fastapi  | 2026-08-19 18:22:08,172 INFO WEB_MINIO_PERSISTENCE_COMPLETED {'run_id': 'web-20260819T182025Z-ad32c621', 'status': 'SUCCESS', 'bucket': 'mammography-web', 'prefix': 'runs/web-20260819T182025Z-ad32c621', 'object_count': 15}
+mammography-agent-fastapi  | 2026-08-19 18:22:08,223 INFO WEB_POSTGRESQL_PERSISTENCE_COMPLETED {'run_id': 'web-20260819T182025Z-ad32c621', 'status': 'SUCCESS'}
+mammography-agent-fastapi  | 2026-08-19 18:22:08,224 INFO WEB_STAGE_COMPLETED {'run_id': 'web-20260819T182025Z-ad32c621', 'stage': 'PERSISTENCE', 'elapsed_seconds': 0.5543262679998406}
+mammography-agent-fastapi  | 2026-08-19 18:22:08,249 INFO WEB_SINGLE_CASE_COMPLETED {'run_id': 'web-20260819T182025Z-ad32c621', 'classification': 'CANCER', 'ensemble_malignancy_score': 0.7529996377999999, 'minio_status': 'SUCCESS', 'overall_elapsed_seconds': 102.3968447950001, 'inference_device': 'cpu', 'threshold': 0.5, 'threshold_source': 'BASELINE', 'weights_source': 'BASELINE'}
+mammography-agent-fastapi  | 2026-08-19 18:22:08,311 INFO WEB_SCRATCH_CLEANUP_COMPLETED {'run_id': 'web-20260819T182025Z-ad32c621', 'scratch_retained': False}
+mammography-agent-fastapi  | INFO:     172.19.0.7:42024 - "POST /single-cases/run HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:53876 - "GET /single-cases/progress/web-20260819T182025Z-ad32c621 HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:53888 - "GET /workspace/status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:53898 - "GET /single-cases/storage-status HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:53912 - "GET /single-cases/ensemble-config HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:53924 - "GET /single-cases/web-settings HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:53934 - "POST /single-cases/inspect HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:53940 - "POST /single-cases/previews HTTP/1.1" 200 OK
+mammography-agent-fastapi  | INFO:     172.19.0.7:56132 - "POST /single-cases/inspect HTTP/1.1" 200 OK

@@ -1,0 +1,226 @@
+name: mammography-ai-prod
+
+services:
+  runtime-seed:
+    image: ${RUNTIME_ASSETS_IMAGE:?RUNTIME_ASSETS_IMAGE is required}
+    volumes:
+      - runtime_workspace:/workspace
+    network_mode: none
+    restart: "no"
+
+  workspace-anchor:
+    image: alpine:3.20
+    container_name: mammography-workspace-anchor
+    command: ["sh", "-c", "mkdir -p /workspace /web-scratch && sleep infinity"]
+    volumes:
+      - runtime_workspace:/workspace
+      - web_scratch:/web-scratch
+    network_mode: none
+    depends_on:
+      runtime-seed:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16.15-alpine3.24}
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [backend]
+    restart: unless-stopped
+
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    networks: [backend]
+    restart: unless-stopped
+
+  minio:
+    image: ${MINIO_IMAGE:-minio/minio:latest}
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+    volumes:
+      - minio_data:/data
+    networks: [backend]
+    restart: unless-stopped
+
+  model-runner:
+    image: ${MODEL_RUNNER_IMAGE:?MODEL_RUNNER_IMAGE is required}
+    container_name: mammography-model-runner
+    command: ["uvicorn", "model_runner.api:app", "--host", "0.0.0.0", "--port", "8010"]
+    environment:
+      WORKSPACE_ROOT: /workspace
+      DEFAULT_MODEL_DEVICE: cpu
+      GMIC_DEVICE: cpu
+      NYU_DEVICE: cpu
+      GLAM_DEVICE: cpu
+      GPU_NUMBER: "0"
+      MODEL_BOOTSTRAP_MODE: ${MODEL_BOOTSTRAP_MODE:-lazy}
+      RESOURCE_SAMPLE_SECONDS: ${RESOURCE_SAMPLE_SECONDS:-2}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DOCKER_HOST: unix:///var/run/docker.sock
+      ALLOW_GPU: "false"
+      WEB_SCRATCH_ROOT: /web-scratch
+      WEB_PERSIST_LOCAL: "false"
+    volumes:
+      - runtime_workspace:/workspace
+      - web_scratch:/web-scratch
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+    depends_on:
+      runtime-seed:
+        condition: service_completed_successfully
+      workspace-anchor:
+        condition: service_started
+    expose: ["8010"]
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8010/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  bootstrap:
+    image: ${APP_IMAGE:?APP_IMAGE is required}
+    command:
+      - python
+      - -c
+      - >-
+        from mammography_agent.workspace import ensure_workspace;
+        from mammography_agent.logging_utils import log_configuration_additions,audit;
+        from mammography_agent.storage import init_db;
+        ensure_workspace(); log_configuration_additions(); init_db(); audit('BOOTSTRAP_COMPLETED')
+    environment:
+      WORKSPACE_ROOT: /workspace
+      CONFIG_ROOT: /app/config
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - runtime_workspace:/workspace
+    depends_on:
+      runtime-seed:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [backend]
+    restart: "no"
+
+  fastapi:
+    image: ${APP_IMAGE:?APP_IMAGE is required}
+    container_name: mammography-agent-fastapi
+    environment:
+      WORKSPACE_ROOT: /workspace
+      CONFIG_ROOT: /app/config
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_URL: redis://redis:6379/0
+      DEFAULT_MAX_RUNTIME_MINUTES: ${DEFAULT_MAX_RUNTIME_MINUTES:-120}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      MODEL_RUNNER_URL: http://model-runner:8010
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY is required}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY is required}
+      MINIO_WEB_BUCKET: ${MINIO_WEB_BUCKET:-mammography-web}
+      MINIO_WEB_ENABLED: "true"
+      MINIO_SECURE: "false"
+      MINIO_CONSOLE_PUBLIC_URL: ""
+      WEB_SCRATCH_ROOT: /web-scratch
+      WEB_PERSIST_LOCAL: "false"
+    volumes:
+      - runtime_workspace:/workspace
+      - web_scratch:/web-scratch
+    expose: ["8000"]
+    networks: [backend]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      model-runner:
+        condition: service_healthy
+      bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  streamlit:
+    image: ${APP_IMAGE:?APP_IMAGE is required}
+    command: ["streamlit", "run", "ui/streamlit_app.py", "--server.address=0.0.0.0", "--server.port=8501"]
+    environment:
+      WORKSPACE_ROOT: /workspace
+      CONFIG_ROOT: /app/config
+      API_URL: http://fastapi:8000
+      WEB_INFERENCE_DEVICE: cpu
+      WEB_SCRATCH_ROOT: /web-scratch
+      WEB_PERSIST_LOCAL: "false"
+      WEB_SCRATCH_TTL_MINUTES: ${WEB_SCRATCH_TTL_MINUTES:-60}
+    volumes:
+      - runtime_workspace:/workspace
+      - web_scratch:/web-scratch
+    expose: ["8501"]
+    networks: [frontend, backend]
+    depends_on:
+      fastapi:
+        condition: service_healthy
+    restart: unless-stopped
+
+  edge:
+    image: ${EDGE_IMAGE:?EDGE_IMAGE is required}
+    environment:
+      APP_SITE_ADDRESS: ${APP_SITE_ADDRESS:-:80}
+      APP_BASIC_AUTH_USER: ${APP_BASIC_AUTH_USER:?APP_BASIC_AUTH_USER is required}
+      APP_BASIC_AUTH_HASH: ${APP_BASIC_AUTH_HASH:?APP_BASIC_AUTH_HASH is required}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [frontend]
+    depends_on:
+      streamlit:
+        condition: service_started
+    restart: unless-stopped
+
+networks:
+  frontend:
+  backend:
+    internal: true
+
+volumes:
+  postgres_data:
+    name: ${POSTGRES_VOLUME_NAME:-mammography-postgres-data}
+  minio_data:
+    name: ${MINIO_VOLUME_NAME:-mammography-minio-data}
+  web_scratch:
+    name: ${WEB_SCRATCH_VOLUME_NAME:-mammography-web-scratch}
+  runtime_workspace:
+    name: ${RUNTIME_WORKSPACE_VOLUME_NAME:-mammography-runtime-workspace}
+  caddy_data:
+    name: ${CADDY_DATA_VOLUME_NAME:-mammography-caddy-data}
+  caddy_config:
+    name: ${CADDY_CONFIG_VOLUME_NAME:-mammography-caddy-config}
