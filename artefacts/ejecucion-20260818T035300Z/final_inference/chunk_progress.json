@@ -1,0 +1,15 @@
+{
+  "run_id": "experiment-20260818T035300Z-final",
+  "status": "SUCCESS",
+  "chunk_size": 25,
+  "total_studies": 8333,
+  "total_chunks": 334,
+  "completed_chunks": 334,
+  "completed_studies": 8333,
+  "remaining_studies": 0,
+  "current_chunk": null,
+  "reused_chunks": 0,
+  "resume_enabled": true,
+  "updated_at_utc": "2026-08-24T02:45:57.866743+00:00",
+  "error": null
+}

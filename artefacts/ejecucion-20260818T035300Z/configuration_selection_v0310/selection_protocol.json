@@ -1,0 +1,30 @@
+{
+  "protocol_id": "stratified_5fold_cv_expanded_grid_v0310",
+  "configuration_studies": 3570,
+  "configuration_class_distribution": {
+    "BENIGN": 3426,
+    "MALIGNANT": 144
+  },
+  "weights": 40,
+  "threshold_quantiles": 17,
+  "candidate_configurations": 680,
+  "fold_evaluations": 3400,
+  "n_splits": 5,
+  "seed": 42,
+  "shuffle": true,
+  "threshold_derivation": "training folds only; score quantiles; labels not used",
+  "candidate_evaluation": "held-out fold only",
+  "final_numeric_threshold": "selected quantile refit on all Configuration scores after CV selection",
+  "selection_order": [
+    "highest_roc_auc_by_weights",
+    "highest_balanced_accuracy",
+    "highest_sensitivity",
+    "highest_specificity",
+    "lowest_false_positives",
+    "nearest_baseline"
+  ],
+  "input_scores_sha256": "c20f06cf7d132fb2d1c3a3cb64461c3e1d95439868d5764f2920ac52d9542dff",
+  "final_test_manifest_sha256": "848eebd1d40440425f72a29d50b48cd16fc5702f27eb8d27c01299ed8b4295db",
+  "final_test_scores_used": false,
+  "models_reexecuted": false
+}

@@ -1,0 +1,52 @@
+{
+  "exclusions": {
+    "policies": [
+      {
+        "dataset": "rsna",
+        "manifest": "/workspace/datasets/manifests/rsna_diagnostic_exclusion_v1.csv",
+        "status": "APPLIED",
+        "excluded_studies": 10,
+        "excluded_patients": 10,
+        "excluded_class_distribution": {
+          "BENIGN": 5,
+          "MALIGNANT": 5
+        },
+        "exclude_from_configuration": true,
+        "exclude_from_final": true
+      }
+    ],
+    "total_excluded_studies": 10,
+    "remaining_formal_pool_studies": 11903,
+    "remaining_formal_pool_class_distribution": {
+      "BENIGN": 11422,
+      "MALIGNANT": 481
+    }
+  },
+  "split_by": "dataset_source+patient_id",
+  "stratified_by": "patient_ground_truth",
+  "seed": 42,
+  "requested_configuration_ratio": 0.3,
+  "requested_final_ratio": 0.7,
+  "formal_pool_studies": 11903,
+  "formal_pool_patients": 11903,
+  "formal_pool_class_distribution": {
+    "BENIGN": 11422,
+    "MALIGNANT": 481
+  },
+  "configuration_studies": 3570,
+  "configuration_patients": 3570,
+  "configuration_class_distribution": {
+    "BENIGN": 3426,
+    "MALIGNANT": 144
+  },
+  "final_test_studies": 8333,
+  "final_test_patients": 8333,
+  "final_test_class_distribution": {
+    "BENIGN": 7996,
+    "MALIGNANT": 337
+  },
+  "study_overlap": 0,
+  "patient_overlap": 0,
+  "formal_pool_coverage_studies": 11903,
+  "formal_pool_coverage_fraction": 1.0
+}

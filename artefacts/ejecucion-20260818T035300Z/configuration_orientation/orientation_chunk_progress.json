@@ -1,0 +1,10 @@
+{
+  "run_id": "experiment-20260818T035300Z-configuration",
+  "status": "SUCCESS",
+  "chunk_size": 25,
+  "total_studies": 3570,
+  "total_chunks": 143,
+  "completed_chunks": 143,
+  "completed_studies": 3570,
+  "reused_chunks": 0
+}

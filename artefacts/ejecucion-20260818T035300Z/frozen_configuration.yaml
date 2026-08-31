@@ -1,0 +1,11 @@
+source_experiment: experiment-20260818T035300Z
+selection_source: expanded_cv_v0310
+selection_artifact: configuration_selection_v0310/best_configuration.json
+weights:
+  gmic: 0.1
+  nyu: 0.1
+  glam: 0.8
+threshold: 0.040985
+selection_policy: ROC-AUC by weights -> Balanced Accuracy -> Sensitivity -> Specificity/FP
+  -> baseline distance
+frozen: true

@@ -1,0 +1,94 @@
+{
+  "run_id": "experiment-20260818T035300Z",
+  "datasets": [
+    "rsna"
+  ],
+  "seed": 42,
+  "samples": null,
+  "prepared_studies_before_formal_exclusions": 11913,
+  "formal_excluded_studies": 10,
+  "formal_pool_studies": 11903,
+  "formal_pool_class_distribution": {
+    "BENIGN": 11422,
+    "MALIGNANT": 481
+  },
+  "configuration_ratio": 0.3,
+  "final_test_ratio": 0.7,
+  "configuration_studies": 3570,
+  "configuration_class_distribution": {
+    "BENIGN": 3426,
+    "MALIGNANT": 144
+  },
+  "final_test_reserved_studies": 8333,
+  "final_test_class_distribution": {
+    "BENIGN": 7996,
+    "MALIGNANT": 337
+  },
+  "formal_pool_coverage_fraction": 1.0,
+  "split_by_patient": true,
+  "stratified": true,
+  "patient_overlap": 0,
+  "study_overlap": 0,
+  "formal_exclusion_policy": {
+    "policies": [
+      {
+        "dataset": "rsna",
+        "manifest": "/workspace/datasets/manifests/rsna_diagnostic_exclusion_v1.csv",
+        "status": "APPLIED",
+        "excluded_studies": 10,
+        "excluded_patients": 10,
+        "excluded_class_distribution": {
+          "BENIGN": 5,
+          "MALIGNANT": 5
+        },
+        "exclude_from_configuration": true,
+        "exclude_from_final": true
+      }
+    ],
+    "total_excluded_studies": 10,
+    "remaining_formal_pool_studies": 11903,
+    "remaining_formal_pool_class_distribution": {
+      "BENIGN": 11422,
+      "MALIGNANT": 481
+    }
+  },
+  "configuration_manifest_before_orientation_sha256": "9893aecb1b3e46fa21a3576c82947456e1628712923aeb93a0ff30eb68e2ae39",
+  "configuration_manifest_sha256": "c775ca62ac062b802b536bb16c9571c54340b7906a9fb5f8acb99f3c7144fce3",
+  "final_test_manifest_sha256": "848eebd1d40440425f72a29d50b48cd16fc5702f27eb8d27c01299ed8b4295db",
+  "configuration_inference_before_freeze": true,
+  "final_inference_before_freeze": false,
+  "inference_policy": "Each formal study belongs to exactly one subset. Configuration is inferred before freeze; Final Test scores are created only after freeze.",
+  "threshold_policy": "Five label-independent score quantiles are derived per weight combination from Configuration Set scores only.",
+  "selection_policy": "Highest ROC-AUC by weights -> highest Balanced Accuracy by threshold -> Sensitivity -> Specificity/FP -> baseline distance. AUPRC/AP and F1 are reported but do not change this policy.",
+  "orientation_policy": "strict_four_view_gap_v1",
+  "orientation_policy_ground_truth_used": false,
+  "final_orientation_resolution_before_freeze": false,
+  "formal_inference": {
+    "mode": "chunked_resumable",
+    "chunk_size": 25,
+    "models_parallel": false,
+    "model_order": [
+      "gmic",
+      "nyu",
+      "glam"
+    ],
+    "resume_enabled": true,
+    "cache_policy": "SUCCESS_MARKER_AND_HASHES"
+  },
+  "reported_metrics_v0302": [
+    "roc_auc",
+    "auprc",
+    "sensitivity",
+    "specificity",
+    "precision_ppv",
+    "npv",
+    "f1",
+    "balanced_accuracy",
+    "accuracy",
+    "tn",
+    "fp",
+    "fn",
+    "tp"
+  ],
+  "execution_status": "CONFIGURATION_SELECTED"
+}

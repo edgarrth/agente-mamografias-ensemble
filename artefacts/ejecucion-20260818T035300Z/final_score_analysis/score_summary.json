@@ -1,0 +1,97 @@
+{
+  "source": "/workspace/output/experiments/experiment-20260818T035300Z/final_inference/raw_model_predictions.csv",
+  "studies": 8333,
+  "class_distribution": {
+    "BENIGN": 7996,
+    "MALIGNANT": 337
+  },
+  "baseline": {
+    "weights": {
+      "gmic": 0.333333,
+      "nyu": 0.333333,
+      "glam": 0.333334
+    },
+    "threshold": 0.5,
+    "ensemble_score_min": 0.0079000007,
+    "ensemble_score_max": 0.9344999041000001,
+    "ensemble_score_mean": 0.13448129046883475,
+    "roc_auc": 0.7437594910214751,
+    "average_precision": 0.17346284886383062,
+    "auprc": 0.17346284886383062,
+    "auprc_method": "average_precision_score",
+    "roc_auc_uncertainty": {
+      "roc_auc_ci95_low": 0.7149040117239629,
+      "roc_auc_ci95_high": 0.7702049977139905,
+      "bootstrap_replicates": 2000,
+      "bootstrap_method": "stratified_by_class"
+    },
+    "classification_metrics": {
+      "tn": 7877,
+      "fp": 119,
+      "fn": 290,
+      "tp": 47,
+      "sensitivity": 0.1394658753709199,
+      "sensitivity_unavailable_reason": null,
+      "specificity": 0.9851175587793897,
+      "specificity_unavailable_reason": null,
+      "precision_ppv": 0.28313253012048195,
+      "precision_ppv_unavailable_reason": null,
+      "npv": 0.9644912452552957,
+      "npv_unavailable_reason": null,
+      "fpr": 0.014882441220610306,
+      "accuracy": 0.9509180367214689,
+      "balanced_accuracy": 0.5622917170751548,
+      "f1": 0.18687872763419483,
+      "f1_unavailable_reason": null,
+      "roc_auc": 0.7437594910214751,
+      "roc_auc_unavailable_reason": null,
+      "average_precision": 0.17346284886383062,
+      "auprc": 0.17346284886383062,
+      "auprc_method": "average_precision_score",
+      "auprc_unavailable_reason": null,
+      "threshold": 0.5
+    }
+  },
+  "statistical_uncertainty": {
+    "benign_studies": 7996,
+    "malignant_studies": 337,
+    "strict_pairwise_auc_step": 3.711054340226493e-07,
+    "bootstrap_method": "stratified_by_class",
+    "bootstrap_replicates": 2000,
+    "interpretation": "Small diagnostic sets have coarse and uncertain ROC-AUC estimates; confidence intervals are descriptive and are not used for configuration selection."
+  },
+  "threshold_strategy": {
+    "mode": "score_quantiles",
+    "quantiles": {
+      "T01": 0.1,
+      "T02": 0.2,
+      "T03": 0.3,
+      "T04": 0.4,
+      "T05": 0.5,
+      "T06": 0.6,
+      "T07": 0.7,
+      "T08": 0.8,
+      "T09": 0.85,
+      "T10": 0.9,
+      "T11": 0.92,
+      "T12": 0.94,
+      "T13": 0.95,
+      "T14": 0.96,
+      "T15": 0.97,
+      "T16": 0.98,
+      "T17": 0.99
+    },
+    "derive_per_weight": true,
+    "ground_truth_used_for_threshold_derivation": false,
+    "candidate_thresholds_generated": false,
+    "diagnostic_configuration_metrics_generated": false,
+    "diagnostic_results_eligible_for_freeze": false
+  },
+  "warnings": [],
+  "research_guards": {
+    "score_inversion_performed": false,
+    "calibration_performed": false,
+    "training_performed": false,
+    "final_test_scores_required": false
+  }
+}

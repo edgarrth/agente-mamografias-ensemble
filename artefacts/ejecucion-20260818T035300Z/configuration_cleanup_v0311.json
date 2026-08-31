@@ -1,0 +1,13 @@
+{
+  "experiment_id": "experiment-20260818T035300Z",
+  "mode": "apply",
+  "configuration_scores_sha256": "c20f06cf7d132fb2d1c3a3cb64461c3e1d95439868d5764f2920ac52d9542dff",
+  "final_test_manifest_sha256": "848eebd1d40440425f72a29d50b48cd16fc5702f27eb8d27c01299ed8b4295db",
+  "orientation_chunks_validated": 143,
+  "orientation_workdirs_targeted": 143,
+  "inference_chunks_validated": 143,
+  "model_batches_targeted": 143,
+  "xai_retention_per_model_per_chunk": 4,
+  "predictions_modified": false,
+  "final_test_scores_used": false
+}
