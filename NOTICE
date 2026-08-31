@@ -1,24 +1,32 @@
 # NOTICE — Componentes de terceros y condiciones de uso
 
+**Proyecto:** Mammography AI Agent
+**Versión:** 1.0.0 (etiqueta `Agent-v1.0.0`, commit `9e43789`)
+**Repositorio:** https://github.com/edgarrth/agente-mamografias-ensemble
+**DOI de esta versión:** https://doi.org/10.5281/zenodo.22216216
+**DOI del proyecto (todas las versiones):** https://doi.org/10.5281/zenodo.22216215
+
 Este archivo documenta los componentes que el proyecto **invoca pero no
 contiene**, y las condiciones bajo las cuales cada uno se distribuye. Léase junto
 con `LICENSE`, que cubre exclusivamente el código propio de los autores.
 
+---
+
 ## 1. Modelos preentrenados
 
 El agente ejecuta tres modelos desarrollados por New York University. **Ninguno
-de ellos forma parte de este repositorio.** Los archivos `docker/model-compat/*.Dockerfile`
-los descargan desde sus repositorios oficiales en el momento de construir las
-imágenes, fijando el commit exacto, de modo que cada usuario los obtiene
-directamente de NYU y bajo los términos de NYU.
+de ellos forma parte de este repositorio.** Los archivos
+`docker/model-compat/*.Dockerfile` los descargan desde sus repositorios oficiales
+en el momento de construir las imágenes, fijando el commit exacto, de modo que
+cada usuario los obtiene directamente de NYU y bajo los términos de NYU.
 
-| Modelo | Origen | Commit fijado |
-|---|---|---|
-| GMIC | https://github.com/nyukat/GMIC | 3bf4ce81dfa40553f108c8bfaf03bf006e082761 |
-| GLAM | https://github.com/nyukat/GLAM | (véase el Dockerfile correspondiente) |
-| DMV-CNN / NYU | https://github.com/nyukat/breast_cancer_classifier | (véase el Dockerfile correspondiente) |
+| Modelo        | Repositorio de origen                              | Commit fijado                              |
+| ------------- | -------------------------------------------------- | ------------------------------------------ |
+| GMIC          | https://github.com/nyukat/GMIC                     | `3bf4ce81dfa40553f108c8bfaf03bf006e082761` |
+| GLAM          | https://github.com/nyukat/GLAM                     | `17a0019860441e2ea8d7b7c7e0aaeada735e871f` |
+| DMV-CNN / NYU | https://github.com/nyukat/breast_cancer_classifier | `de2b0855d02984df0f516008bb4513ff71460e21` |
 
-### Condiciones declaradas por NYU
+### 1.1 Condiciones declaradas por NYU
 
 Los tres repositorios presentan dos declaraciones que conviene leer en conjunto.
 El archivo README de cada uno indica que el **código** está licenciado bajo GNU
@@ -41,30 +49,40 @@ De ahí se derivan tres consecuencias operativas para quien use este proyecto:
    incluye ni el código de los modelos ni sus pesos, y por eso los Dockerfiles
    los descargan en tiempo de construcción.
 3. **No se permite modificar los modelos.** Las imágenes de compatibilidad
-   aplican únicamente ajustes de entorno de ejecución (versión de PyTorch y
-   CUDA) y una corrección de compatibilidad heredada del meta-repositorio; las
+   aplican únicamente ajustes de entorno de ejecución —PyTorch 2.7.1 y CUDA 12.8,
+   la primera generación estable con soporte oficial para NVIDIA Blackwell— y una
+   corrección de compatibilidad heredada del meta-repositorio de referencia. Las
    arquitecturas y los pesos permanecen sin cambios.
 
-> **Advertencia sobre la publicación de imágenes.** Los guiones
-> `scripts/production/publish-existing-model-images.sh` y
-> `publish-platform-images.sh` ejecutan `docker push` de imágenes que contienen
-> el código y los pesos de los modelos. Publicarlas en un registro de acceso
-> público constituiría una redistribución que la licencia de NYU no autoriza.
-> Estos guiones están previstos únicamente para registros privados de uso
-> interno.
+### 1.2 Advertencia sobre la publicación de imágenes
+
+Los guiones `scripts/production/publish-existing-model-images.sh` y
+`scripts/production/publish-platform-images.sh` ejecutan `docker push` de
+imágenes que contienen el código y los pesos de los modelos. **Publicarlas en un
+registro de acceso público constituiría una redistribución que la licencia de NYU
+no autoriza.** Estos guiones están previstos únicamente para registros privados
+de uso interno.
+
+---
 
 ## 2. Conjuntos de datos
 
 Este repositorio **no redistribuye ninguna imagen médica** ni ningún derivado de
-píxeles. Los artefactos conservados son puntajes, manifiestos, métricas y
-resúmenes criptográficos. Quien desee reproducir la evaluación debe obtener los
-datos de la fuente oficial y aceptar sus términos.
+píxeles. Los artefactos conservados en `artifacts/` son puntajes, manifiestos,
+métricas y resúmenes criptográficos. Quien desee reproducir la evaluación debe
+obtener los datos de la fuente oficial y aceptar sus términos.
 
-| Conjunto | Fuente | Condiciones |
-|---|---|---|
-| RSNA Screening Mammography Breast Cancer Detection | AWS Open Data / Kaggle | Licencia propia de carácter **no comercial**, con acuerdo de uso de datos |
-| CMMD (The Chinese Mammography Database) | The Cancer Imaging Archive | Licencia Creative Commons Attribution; verifíquese la versión vigente en la página de la colección |
-| CBIS-DDSM | The Cancer Imaging Archive | Licencia Creative Commons Attribution; verifíquese la versión vigente en la página de la colección |
+| Conjunto                                           | Fuente                     | Condiciones                                                                                        |
+| -------------------------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------- |
+| RSNA Screening Mammography Breast Cancer Detection | AWS Open Data / Kaggle     | Licencia propia de carácter **no comercial**, con acuerdo de uso de datos                          |
+| CMMD (The Chinese Mammography Database)            | The Cancer Imaging Archive | Licencia Creative Commons Attribution; verifíquese la versión vigente en la página de la colección |
+| CBIS-DDSM                                          | The Cancer Imaging Archive | Licencia Creative Commons Attribution; verifíquese la versión vigente en la página de la colección |
+
+El guion `scripts/publish_run_artifacts.py` excluye de forma automática los
+formatos derivados de píxeles y de pesos de modelo, de modo que una publicación
+futura no pueda incorporarlos por descuido.
+
+---
 
 ## 3. Dependencias de software
 
@@ -73,15 +91,24 @@ El proyecto utiliza bibliotecas de terceros declaradas en `requirements.txt` y
 pandas, NumPy, scikit-learn, FastAPI, Streamlit, SQLAlchemy, pydicom, MinIO y
 LangGraph.
 
+---
+
 ## 4. Cómo citar
 
-Si utiliza este software, cite la tesis y el registro de software:
+### Este software
 
 > Osorio Rodriguez, O. J., Rodriguez Tapia, E. R., Salazar Gonzales, A. A., y
 > Vasquez Cueva, E. L. (2026). *Mammography AI Agent* (Versión 1.0.0)
-> [Software]. Zenodo. https://doi.org/10.5281/zenodo.XXXXXXX
+> [Software]. Zenodo. https://doi.org/10.5281/zenodo.22216216
 
-Y cite también los modelos y el conjunto de datos que utilice:
+Se cita el DOI de la versión 1.0.0 y no el del proyecto porque los resúmenes
+criptográficos declarados en el Anexo 1 de la tesis corresponden a un estado
+congelado del repositorio. El DOI del proyecto,
+https://doi.org/10.5281/zenodo.22216215, resuelve siempre a la versión más
+reciente y es el adecuado para la insignia del archivo `README.md`, pero no para
+una cita que deba permanecer verificable.
+
+### Los modelos que utilice
 
 > Shen, Y., Wu, N., Phang, J., Park, J., Liu, K., Tyagi, S., Heacock, L.,
 > Kim, S. G., Moy, L., Cho, K., y Geras, K. J. (2021). An interpretable
@@ -100,15 +127,47 @@ Y cite también los modelos y el conjunto de datos que utilice:
 > breast cancer screening. *IEEE Transactions on Medical Imaging, 39*(4),
 > 1184–1194.
 
+### El conjunto de datos principal
+
 > Trivedi, H. M., Vazirabad, M., Kitamura, F. C., Chen, Y., y Frazer, H. (2026).
 > Open-source dataset for the RSNA Screening Mammography Cancer Detection
 > Challenge. *Radiology: Artificial Intelligence, 8*(2), Artículo e250375.
+> https://doi.org/10.1148/ryai.250375
 
-## 5. Naturaleza del software
+---
 
-Prototipo de investigación desarrollado para una tesis de la Maestría en
-Dirección de Tecnologías de la Información de la Universidad ESAN. No constituye
-un dispositivo médico, no ha sido validado clínicamente y no cuenta con
-autorización regulatoria. Los resultados obtenidos corresponden a una evaluación
-retrospectiva sobre una colección extranjera y no permiten inferir eficacia
-clínica ni desempeño sobre otras poblaciones.
+## 5. Artefactos de la evaluación formal
+
+El directorio `artifacts/ejecucion-20260818T035300Z/` contiene los sesenta y
+ocho artefactos que sustentan las cifras del documento de tesis, junto con un
+archivo `SHA256SUMS` que permite verificar la integridad de cada uno. El
+inventario completo, con el prefijo criptográfico de cada archivo, se transcribe
+en el Anexo 1 de la tesis.
+
+Estos artefactos forman parte del archivo permanente depositado en Zenodo bajo el
+DOI https://doi.org/10.5281/zenodo.22216216, de modo que su disponibilidad no
+depende de que el repositorio de desarrollo siga accesible.
+
+Para comprobar que el código reproduce la selección de configuración informada,
+sin necesidad de ejecutar los modelos:
+
+```
+python scripts/validate_merge.py \
+  artifacts/ejecucion-20260818T035300Z/configuration_set_predictions.csv
+```
+
+---
+
+## 6. Naturaleza del software
+
+Prototipo de investigación desarrollado para la tesis *Desarrollo de un agente de
+inteligencia artificial aplicado al diagnóstico temprano del cáncer de mama*,
+Maestría en Dirección de Tecnologías de la Información, Universidad ESAN, 2026.
+
+**No constituye un dispositivo médico.** No ha sido validado clínicamente y no
+cuenta con autorización regulatoria alguna. No debe utilizarse para tomar
+decisiones diagnósticas ni asistenciales.
+
+Los resultados obtenidos corresponden a una evaluación retrospectiva sobre una
+colección extranjera y no permiten inferir eficacia clínica, generalización a la
+población peruana ni preparación para operación hospitalaria.

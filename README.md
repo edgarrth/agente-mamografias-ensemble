@@ -1,4 +1,6 @@
 # Mammography AI Agent
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
+
 
 **Propósito:** prototipo de tesis de maestría para inferencia mamográfica con **GMIC + DMV-CNN/NYU + GLAM** y combinación mediante **Weighted Soft Voting**.
 
@@ -116,6 +118,22 @@ El catálogo actual incluye:
 
 Docker no descarga estos datasets automáticamente al levantar la plataforma.
 
+## 1.6 Licencia, datos y uso permitido
+
+El código propio de este proyecto se distribuye bajo licencia MIT (`LICENSE`).
+
+**Los modelos no se redistribuyen.** GMIC, GLAM y DMV-CNN/NYU se descargan de
+sus repositorios oficiales durante la construcción de las imágenes, con el
+commit fijado, bajo los términos de New York University: uso interno de
+investigación no comercial, sin derecho a redistribuir ni modificar. Los guiones
+de `scripts/production/` que publican imágenes están previstos únicamente para
+registros privados.
+
+**No se redistribuye ninguna imagen médica.** Lo que el repositorio conserva son
+puntajes, manifiestos, métricas y resúmenes criptográficos. Los conjuntos de
+datos deben obtenerse de su fuente oficial aceptando sus términos.
+
+El detalle completo está en `NOTICE`.
 ---
 
 # 2. Diagrama de arquitectura
