@@ -1,0 +1,44 @@
+MIT License
+
+Copyright (c) 2026 Omar José Osorio Rodriguez, Edgar Ricardo Rodriguez Tapia,
+Alvaro Adolfo Salazar Gonzales y Erika Lizett Vasquez Cueva
+
+Se concede permiso, de forma gratuita, a cualquier persona que obtenga una copia
+de este software y de los archivos de documentación asociados (el "Software"),
+para utilizar el Software sin restricción, incluyendo sin limitación los derechos
+a usar, copiar, modificar, fusionar, publicar, distribuir, sublicenciar y/o
+vender copias del Software, y a permitir a las personas a las que se les
+proporcione el Software a hacer lo mismo, con sujeción a las siguientes
+condiciones:
+
+El aviso de copyright anterior y este aviso de permiso se incluirán en todas las
+copias o partes sustanciales del Software.
+
+EL SOFTWARE SE PROPORCIONA "TAL CUAL", SIN GARANTÍA DE NINGÚN TIPO, EXPRESA O
+IMPLÍCITA, INCLUYENDO PERO NO LIMITADO A GARANTÍAS DE COMERCIABILIDAD, IDONEIDAD
+PARA UN PROPÓSITO PARTICULAR Y NO INFRACCIÓN. EN NINGÚN CASO LOS AUTORES O
+TITULARES DEL COPYRIGHT SERÁN RESPONSABLES DE NINGUNA RECLAMACIÓN, DAÑO U OTRA
+RESPONSABILIDAD, YA SEA EN UNA ACCIÓN CONTRACTUAL, EXTRACONTRACTUAL O DE OTRO
+TIPO, QUE SURJA DE, O EN CONEXIÓN CON EL SOFTWARE O EL USO U OTROS TRATOS EN EL
+SOFTWARE.
+
+--------------------------------------------------------------------------------
+
+ALCANCE DE ESTA LICENCIA
+
+Esta licencia cubre ÚNICAMENTE el código escrito por los autores de la tesis:
+la arquitectura de orquestación, los adaptadores de conjuntos de datos, la
+canalización de preprocesamiento, el mecanismo de ensamble por votación blanda
+ponderada, el procedimiento de selección de configuración, la interfaz
+demostrativa y los guiones de despliegue.
+
+NO cubre los tres modelos preentrenados que el agente invoca (GMIC, GLAM y
+DMV-CNN/NYU), que se distribuyen por separado bajo términos propios de New York
+University, ni los conjuntos de datos utilizados. Véase el archivo NOTICE.
+
+ADVERTENCIA DE USO
+
+Este software es un prototipo de investigación desarrollado en el marco de una
+tesis de maestría. No es un dispositivo médico, no ha sido validado clínicamente
+ni cuenta con autorización regulatoria alguna. No debe utilizarse para tomar
+decisiones diagnósticas ni asistenciales.

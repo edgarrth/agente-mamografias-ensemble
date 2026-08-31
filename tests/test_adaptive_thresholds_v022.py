@@ -14,11 +14,11 @@ def _df(labels=None):
     })
 
 
-def test_adaptive_grid_has_80_rows_and_is_not_legacy_fixed_grid():
+def test_adaptive_grid_has_680_rows_and_is_not_legacy_fixed_grid():
     r=all_configurations(_df())
-    assert len(r)==80
-    assert r.weight_id.nunique()==16
-    assert r.threshold_id.nunique()==5
+    assert len(r)==680
+    assert r.weight_id.nunique()==40
+    assert r.threshold_id.nunique()==17
     assert set(r.threshold_source)=={"configuration_score_quantile"}
     assert set(r.ground_truth_used_for_threshold_derivation)=={False}
     assert r.threshold.max() < 0.40

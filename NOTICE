@@ -1,0 +1,114 @@
+# NOTICE — Componentes de terceros y condiciones de uso
+
+Este archivo documenta los componentes que el proyecto **invoca pero no
+contiene**, y las condiciones bajo las cuales cada uno se distribuye. Léase junto
+con `LICENSE`, que cubre exclusivamente el código propio de los autores.
+
+## 1. Modelos preentrenados
+
+El agente ejecuta tres modelos desarrollados por New York University. **Ninguno
+de ellos forma parte de este repositorio.** Los archivos `docker/model-compat/*.Dockerfile`
+los descargan desde sus repositorios oficiales en el momento de construir las
+imágenes, fijando el commit exacto, de modo que cada usuario los obtiene
+directamente de NYU y bajo los términos de NYU.
+
+| Modelo | Origen | Commit fijado |
+|---|---|---|
+| GMIC | https://github.com/nyukat/GMIC | 3bf4ce81dfa40553f108c8bfaf03bf006e082761 |
+| GLAM | https://github.com/nyukat/GLAM | (véase el Dockerfile correspondiente) |
+| DMV-CNN / NYU | https://github.com/nyukat/breast_cancer_classifier | (véase el Dockerfile correspondiente) |
+
+### Condiciones declaradas por NYU
+
+Los tres repositorios presentan dos declaraciones que conviene leer en conjunto.
+El archivo README de cada uno indica que el **código** está licenciado bajo GNU
+AGPLv3. El archivo LICENSE, en cambio, contiene una licencia propia de NYU
+aplicable al **modelo y su documentación**, cuyos términos son sensiblemente más
+restrictivos. En el caso de GLAM:
+
+> Copyright 2021 New York University. All Rights Reserved.
+>
+> A license to use and copy this model and its documentation solely for your
+> internal non-commercial research and evaluation purposes […] 2) no rights to
+> sublicense or further distribute this model are granted; 3) no rights to modify
+> this model are granted […]
+
+De ahí se derivan tres consecuencias operativas para quien use este proyecto:
+
+1. **Uso restringido a investigación no comercial e interna.** Para usos
+   comerciales hay que contactar a la NYU Office of Industrial Liaison.
+2. **No se permite redistribuir los modelos.** Por eso este repositorio no
+   incluye ni el código de los modelos ni sus pesos, y por eso los Dockerfiles
+   los descargan en tiempo de construcción.
+3. **No se permite modificar los modelos.** Las imágenes de compatibilidad
+   aplican únicamente ajustes de entorno de ejecución (versión de PyTorch y
+   CUDA) y una corrección de compatibilidad heredada del meta-repositorio; las
+   arquitecturas y los pesos permanecen sin cambios.
+
+> **Advertencia sobre la publicación de imágenes.** Los guiones
+> `scripts/production/publish-existing-model-images.sh` y
+> `publish-platform-images.sh` ejecutan `docker push` de imágenes que contienen
+> el código y los pesos de los modelos. Publicarlas en un registro de acceso
+> público constituiría una redistribución que la licencia de NYU no autoriza.
+> Estos guiones están previstos únicamente para registros privados de uso
+> interno.
+
+## 2. Conjuntos de datos
+
+Este repositorio **no redistribuye ninguna imagen médica** ni ningún derivado de
+píxeles. Los artefactos conservados son puntajes, manifiestos, métricas y
+resúmenes criptográficos. Quien desee reproducir la evaluación debe obtener los
+datos de la fuente oficial y aceptar sus términos.
+
+| Conjunto | Fuente | Condiciones |
+|---|---|---|
+| RSNA Screening Mammography Breast Cancer Detection | AWS Open Data / Kaggle | Licencia propia de carácter **no comercial**, con acuerdo de uso de datos |
+| CMMD (The Chinese Mammography Database) | The Cancer Imaging Archive | Licencia Creative Commons Attribution; verifíquese la versión vigente en la página de la colección |
+| CBIS-DDSM | The Cancer Imaging Archive | Licencia Creative Commons Attribution; verifíquese la versión vigente en la página de la colección |
+
+## 3. Dependencias de software
+
+El proyecto utiliza bibliotecas de terceros declaradas en `requirements.txt` y
+`pyproject.toml`, cada una bajo su propia licencia. Las principales son PyTorch,
+pandas, NumPy, scikit-learn, FastAPI, Streamlit, SQLAlchemy, pydicom, MinIO y
+LangGraph.
+
+## 4. Cómo citar
+
+Si utiliza este software, cite la tesis y el registro de software:
+
+> Osorio Rodriguez, O. J., Rodriguez Tapia, E. R., Salazar Gonzales, A. A., y
+> Vasquez Cueva, E. L. (2026). *Mammography AI Agent* (Versión 1.0.0)
+> [Software]. Zenodo. https://doi.org/10.5281/zenodo.XXXXXXX
+
+Y cite también los modelos y el conjunto de datos que utilice:
+
+> Shen, Y., Wu, N., Phang, J., Park, J., Liu, K., Tyagi, S., Heacock, L.,
+> Kim, S. G., Moy, L., Cho, K., y Geras, K. J. (2021). An interpretable
+> classifier for high-resolution breast cancer screening images utilizing weakly
+> supervised localization. *Medical Image Analysis, 68*, 101908.
+
+> Liu, K., Shen, Y., Wu, N., Chłędowski, J., Fernandez-Granda, C., y Geras, K. J.
+> (2021). Weakly-supervised high-resolution segmentation of mammography images
+> for breast cancer diagnosis. *Proceedings of Machine Learning Research, 143*,
+> 268–285.
+
+> Wu, N., Phang, J., Park, J., Shen, Y., Huang, Z., Zorin, M., Jastrzębski, S.,
+> Févry, T., Katsnelson, J., Kim, E., Wolfson, S., Parikh, U., Gaddam, S.,
+> Lin, L. L. Y., Ho, K., Weinstein, J. D., Reig, B., Gao, Y., Toth, H., …
+> Geras, K. J. (2020). Deep neural networks improve radiologists' performance in
+> breast cancer screening. *IEEE Transactions on Medical Imaging, 39*(4),
+> 1184–1194.
+
+> Trivedi, H. M., Vazirabad, M., Kitamura, F. C., Chen, Y., y Frazer, H. (2026).
+> Open-source dataset for the RSNA Screening Mammography Cancer Detection
+> Challenge. *Radiology: Artificial Intelligence, 8*(2), Artículo e250375.
+
+## 5. Naturaleza del software
+
+Prototipo de investigación desarrollado para una tesis de la Maestría en
+Dirección de Tecnologías de la Información de la Universidad ESAN. No constituye
+un dispositivo médico, no ha sido validado clínicamente y no cuenta con
+autorización regulatoria. Los resultados obtenidos corresponden a una evaluación
+retrospectiva sobre una colección extranjera y no permiten inferir eficacia
+clínica ni desempeño sobre otras poblaciones.

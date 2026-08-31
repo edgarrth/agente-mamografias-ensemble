@@ -1,0 +1,20 @@
+{
+  "title": "Mammography AI Agent: integración de modelos mamográficos preentrenados mediante votación blanda ponderada",
+  "description": "<p>Prototipo de investigación desarrollado para una tesis de la Maestría en Direcci\u00f3n de Tecnolog\u00edas de la Informaci\u00f3n de la Universidad ESAN. Integra tres modelos mamogr\u00e1ficos preentrenados (GMIC, DMV-CNN/NYU y GLAM) en un agente \u00fanico mediante votaci\u00f3n blanda ponderada, sin entrenar ninguna red nueva.</p><p>El repositorio contiene la arquitectura de orquestaci\u00f3n, los adaptadores de conjuntos de datos, el procedimiento de selecci\u00f3n de configuraci\u00f3n con validaci\u00f3n cruzada estratificada, la interfaz demostrativa y los artefactos de la evaluaci\u00f3n formal.</p><p><strong>No es un dispositivo m\u00e9dico.</strong> No ha sido validado cl\u00ednicamente ni cuenta con autorizaci\u00f3n regulatoria. Los modelos preentrenados no se redistribuyen: se descargan de sus repositorios oficiales durante la construcci\u00f3n de las im\u00e1genes, bajo los t\u00e9rminos de New York University. Tampoco se redistribuye ninguna imagen m\u00e9dica. V\u00e9ase el archivo NOTICE.</p>",
+  "upload_type": "software",
+  "license": "mit",
+  "access_right": "open",
+  "language": "spa",
+  "version": "1.0.0",
+  "creators": [
+    {"name": "Osorio Rodriguez, Omar José", "affiliation": "Universidad ESAN"},
+    {"name": "Rodriguez Tapia, Edgar Ricardo", "affiliation": "Universidad ESAN"},
+    {"name": "Salazar Gonzales, Alvaro Adolfo", "affiliation": "Universidad ESAN"},
+    {"name": "Vasquez Cueva, Erika Lizett", "affiliation": "Universidad ESAN"}
+  ],
+  "keywords": [
+    "mamografía", "cáncer de mama", "inteligencia artificial",
+    "aprendizaje por ensamble", "votación blanda ponderada",
+    "modelos preentrenados", "DICOM", "reproducibilidad"
+  ]
+}
