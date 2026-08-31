@@ -1,5 +1,5 @@
 # Mammography AI Agent
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
+[![DOI](https://zenodo.org/badge/1334572736.svg)](https://doi.org/10.5281/zenodo.22216215)
 
 
 **Propósito:** prototipo de tesis de maestría para inferencia mamográfica con **GMIC + DMV-CNN/NYU + GLAM** y combinación mediante **Weighted Soft Voting**.
