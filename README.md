@@ -1,6 +1,5 @@
 # Mammography AI Agent
 
-**Versión:** 0.35.3 — corrección de persistencia Web entre upgrades  
 **Propósito:** prototipo de tesis de maestría para inferencia mamográfica con **GMIC + DMV-CNN/NYU + GLAM** y combinación mediante **Weighted Soft Voting**.
 
 > **Uso exclusivo de investigación.** Este software no es un dispositivo médico, no sustituye la evaluación de un radiólogo y sus resultados no constituyen un diagnóstico clínico.
